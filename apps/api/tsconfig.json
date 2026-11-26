@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "baseUrl": "../..",
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": true,
+    "incremental": false,
+    "paths": {
+      "@kaafila/shared": [
+        "packages/shared/dist/index.d.ts"
+      ],
+      "@kaafila/shared/*": [
+        "packages/shared/dist/*.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

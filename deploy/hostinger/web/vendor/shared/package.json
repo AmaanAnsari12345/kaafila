@@ -1,0 +1,26 @@
+{
+  "name": "@kaafila/shared",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/**/*.test.js\"",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "typescript": "^5.7.2"
+  }
+}

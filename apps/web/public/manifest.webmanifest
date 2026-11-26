@@ -1,0 +1,26 @@
+{
+  "name": "KAAFILA — drive together",
+  "short_name": "KAAFILA",
+  "description": "Group-driving operating system: live convoy formation, pacing, fuel range, regroup, SOS, car care, clubs and meetups.",
+  "start_url": "/drive",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#080b11",
+  "background_color": "#080b11",
+  "categories": ["navigation", "travel", "utilities"],
+  "icons": [
+    {
+      "src": "/brand/kaafila-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Drive", "url": "/drive", "description": "Open the convoy cockpit" },
+    { "name": "Roadside help", "url": "/roadside", "description": "Emergency numbers and breakdown guides" },
+    { "name": "Co-pilot", "url": "/copilot", "description": "Ask about your convoy" },
+    { "name": "Garage", "url": "/garage", "description": "Car care and OBD" }
+  ]
+}

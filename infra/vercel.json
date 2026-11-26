@@ -1,0 +1,7 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "cd ../.. && pnpm --filter @kaafila/web build",
+  "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile",
+  "outputDirectory": ".next",
+  "regions": ["bom1", "sin1"]
+}

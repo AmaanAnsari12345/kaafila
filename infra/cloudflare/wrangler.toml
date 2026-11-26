@@ -1,0 +1,10 @@
+name = "kaafila-edge"
+compatibility_date = "2026-06-01"
+main = "worker.ts"
+
+[vars]
+APP_NAME = "KAAFILA"
+
+[[kv_namespaces]]
+binding = "KAAFILA_EDGE_CACHE"
+id = "replace-with-cloudflare-kv-id"

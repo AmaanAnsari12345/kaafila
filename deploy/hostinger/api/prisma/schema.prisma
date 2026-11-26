@@ -1,0 +1,1046 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  user
+  admin
+  support
+}
+
+enum PlanCode {
+  explorer
+  drive
+  fleet
+}
+
+enum VehicleType {
+  car
+  suv
+  supercar
+  motorcycle
+  bus
+  truck
+  ev
+  support
+}
+
+enum FuelType {
+  petrol
+  diesel
+  cng
+  lpg
+  ev
+  hybrid
+}
+
+enum ConvoyStatus {
+  scheduled
+  boarding
+  active
+  paused
+  completed
+  cancelled
+}
+
+enum ConvoyVisibility {
+  private
+  club
+  public
+  fleet
+  event
+}
+
+enum ConvoyRole {
+  owner
+  leader
+  sweeper
+  driver
+  navigator
+  family
+  viewer
+}
+
+enum MemberStatus {
+  invited
+  active
+  muted
+  removed
+}
+
+enum AlertType {
+  vehicle_separation
+  lost_vehicle
+  route_deviation
+  speed_camera
+  checkpoint
+  road_hazard
+  toll
+  pit_stop
+  sos
+  fatigue
+  low_range
+  dead_zone
+  regroup
+}
+
+enum AlertSeverity {
+  info
+  warning
+  critical
+}
+
+enum VoiceChannelType {
+  main
+  leaders
+  emergency
+  team
+}
+
+enum JourneyStatus {
+  recording
+  processing
+  completed
+  failed
+}
+
+enum MediaType {
+  photo
+  video
+  voice_note
+  report
+  ai_movie
+}
+
+enum SubscriptionStatus {
+  checkout_pending
+  active
+  past_due
+  cancelled
+  expired
+}
+
+enum PaymentProvider {
+  razorpay
+  stripe
+}
+
+enum TaxMode {
+  inclusive
+  exclusive
+}
+
+enum ReportStatus {
+  open
+  reviewing
+  resolved
+  rejected
+}
+
+enum DeviceKind {
+  phone
+  tablet
+  car_display
+  obd_adapter
+  dashcam
+  wearable
+}
+
+enum DeviceStatus {
+  active
+  revoked
+}
+
+enum SosKind {
+  manual
+  crash_detected
+  medical
+  breakdown
+  security
+}
+
+enum SosStatus {
+  open
+  acknowledged
+  resolved
+  false_alarm
+}
+
+enum MessageKind {
+  text
+  quick_signal
+  system
+}
+
+enum ExpenseCategory {
+  fuel
+  toll
+  food
+  stay
+  parking
+  repair
+  activity
+  other
+}
+
+enum PostVisibility {
+  public
+  followers
+  club
+}
+
+enum MeetupStatus {
+  draft
+  pending_review
+  published
+  rejected
+  cancelled
+  completed
+}
+
+enum RsvpStatus {
+  going
+  waitlist
+  cancelled
+  checked_in
+}
+
+enum RoadReportType {
+  pothole
+  accident
+  police_check
+  flooding
+  roadwork
+  debris
+  animal
+  fog
+  closure
+  speed_camera
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id                    String           @id
+  email                 String?          @unique
+  phone                 String?          @unique
+  handle                String?          @unique
+  displayName           String
+  avatarUrl             String?
+  bio                   String?
+  homeCity              String?
+  countryCode           String?          @db.VarChar(2)
+  role                  UserRole         @default(user)
+  isSuspended           Boolean          @default(false)
+  suspendedReason       String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  bloodGroup            String?          @db.VarChar(4)
+  medicalNotes          String?
+  upiVpa                String?
+  lastActiveAt          DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  vehicles              Vehicle[]
+  ownedConvoys          Convoy[]         @relation("ConvoyOwner")
+  ledConvoys            Convoy[]         @relation("ConvoyLeader")
+  memberships           ConvoyMember[]
+  subscriptions         Subscription[]
+  reports               Report[]         @relation("ReportReporter")
+  assignedReports       Report[]         @relation("ReportAssignee")
+  clubsOwned            Club[]           @relation("ClubOwner")
+  clubMemberships       ClubMember[]
+  devices               Device[]
+  posts                 Post[]
+  comments              PostComment[]
+  likes                 PostLike[]
+  following             Follow[]         @relation("Follower")
+  followers             Follow[]         @relation("Following")
+  meetupsHosted         Meetup[]
+  rsvps                 MeetupRsvp[]
+  sosIncidents          SosIncident[]    @relation("SosRaisedBy")
+  expensesPaid          Expense[]
+  expenseShares         ExpenseShare[]
+  messages              ConvoyMessage[]
+  roadReports           RoadReport[]
+  roadReportVotes       RoadReportVote[]
+
+  @@index([role])
+  @@index([createdAt])
+  @@index([isSuspended])
+}
+
+// ---------------------------------------------------------------------------
+// Garage
+// ---------------------------------------------------------------------------
+
+model Vehicle {
+  id               String              @id @default(cuid())
+  userId           String
+  type             VehicleType
+  name             String
+  make             String?
+  model            String?
+  year             Int?
+  plateNumber      String?
+  color            String?
+  fuelType         FuelType?
+  rangeKmFull      Int?
+  odometerKm       Int?
+  photoUrl         String?
+  isShowcase       Boolean             @default(false)
+  isDefault        Boolean             @default(false)
+  obdDeviceId      String?
+  telemetry        Json?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberships      ConvoyMember[]
+  locationPings    LocationPing[]
+  seat             SubscriptionSeat?
+  maintenance      MaintenanceRecord[]
+  reminders        ServiceReminder[]
+  documents        VehicleDocument[]
+  telemetrySamples VehicleTelemetry[]
+  devices          Device[]
+
+  @@index([userId])
+  @@index([type])
+}
+
+model MaintenanceRecord {
+  id          String   @id @default(cuid())
+  vehicleId   String
+  type        String
+  title       String
+  odometerKm  Int?
+  costMinor   Int?
+  currency    String   @default("INR")
+  vendor      String?
+  notes       String?
+  performedAt DateTime
+  createdAt   DateTime @default(now())
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, performedAt])
+}
+
+model ServiceReminder {
+  id                 String    @id @default(cuid())
+  vehicleId          String
+  type               String
+  title              String
+  dueAt              DateTime?
+  dueOdometerKm      Int?
+  intervalDays       Int?
+  intervalKm         Int?
+  lastDoneAt         DateTime?
+  lastDoneOdometerKm Int?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  vehicle            Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([dueAt])
+}
+
+model VehicleDocument {
+  id        String    @id @default(cuid())
+  vehicleId String
+  kind      String
+  number    String?
+  issuer    String?
+  expiresAt DateTime?
+  fileUrl   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  vehicle   Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@index([expiresAt])
+}
+
+model VehicleTelemetry {
+  id         String   @id @default(cuid())
+  vehicleId  String
+  source     String   @default("obd")
+  readings   Json
+  dtcs       String[]
+  capturedAt DateTime
+  createdAt  DateTime @default(now())
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, capturedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Devices
+// ---------------------------------------------------------------------------
+
+model Device {
+  id           String       @id @default(cuid())
+  userId       String
+  vehicleId    String?
+  kind         DeviceKind
+  name         String
+  platform     String?
+  capabilities Json?
+  status       DeviceStatus @default(active)
+  pairedAt     DateTime     @default(now())
+  lastSeenAt   DateTime?
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle      Vehicle?     @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([vehicleId])
+}
+
+model DevicePairing {
+  id         String     @id @default(cuid())
+  code       String
+  ownerId    String
+  vehicleId  String?
+  kind       DeviceKind @default(tablet)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  consumedBy String?
+  createdAt  DateTime   @default(now())
+
+  @@index([code, consumedAt])
+  @@index([ownerId])
+}
+
+// ---------------------------------------------------------------------------
+// Convoys
+// ---------------------------------------------------------------------------
+
+model Convoy {
+  id                 String            @id @default(cuid())
+  name               String
+  ownerId            String
+  leaderUserId       String
+  inviteCode         String            @unique
+  visibility         ConvoyVisibility  @default(private)
+  status             ConvoyStatus      @default(scheduled)
+  originLat          Float
+  originLng          Float
+  originName         String?
+  destinationLat     Float
+  destinationLng     Float
+  destinationName    String?
+  routePolyline      String?
+  routeDistanceM     Int?
+  routeDurationS     Int?
+  routeProvider      String?
+  plannedDepartureAt DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  maxVehicles        Int               @default(50)
+  regroupName        String?
+  regroupLat         Float?
+  regroupLng         Float?
+  regroupSetAt       DateTime?
+  regroupSetBy       String?
+  settings           Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  owner              User              @relation("ConvoyOwner", fields: [ownerId], references: [id])
+  leader             User              @relation("ConvoyLeader", fields: [leaderUserId], references: [id])
+  members            ConvoyMember[]
+  locationPings      LocationPing[]
+  alerts             Alert[]
+  routeCheckpoints   RouteCheckpoint[]
+  voiceChannels      VoiceChannel[]
+  journeyRecording   JourneyRecording?
+  clubConvoys        ClubConvoy[]
+  messages           ConvoyMessage[]
+  shareLinks         ShareLink[]
+  sosIncidents       SosIncident[]
+  expenses           Expense[]
+
+  @@index([ownerId, createdAt])
+  @@index([status, updatedAt])
+  @@index([visibility, status])
+}
+
+model ConvoyMember {
+  id        String       @id @default(cuid())
+  convoyId  String
+  userId    String
+  vehicleId String?
+  role      ConvoyRole   @default(driver)
+  status    MemberStatus @default(invited)
+  joinedAt  DateTime     @default(now())
+  convoy    Convoy       @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle?     @relation(fields: [vehicleId], references: [id])
+
+  @@unique([convoyId, userId])
+  @@index([userId])
+  @@index([vehicleId])
+  @@index([convoyId, status])
+}
+
+model LocationPing {
+  id             String   @id @default(cuid())
+  convoyId       String
+  vehicleId      String
+  lat            Float
+  lng            Float
+  speedKph       Float
+  headingDeg     Float
+  accuracyMeters Float?
+  capturedAt     DateTime
+  receivedAt     DateTime @default(now())
+  convoy         Convoy   @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([convoyId, capturedAt])
+  @@index([vehicleId, capturedAt])
+  @@index([receivedAt])
+}
+
+/// Learned cellular coverage: gaps between consecutive pings mark cells along the gap.
+model CoverageCell {
+  geohash   String    @id @db.VarChar(12)
+  samples   Int       @default(0)
+  gapCount  Int       @default(0)
+  lastGapAt DateTime?
+  updatedAt DateTime  @updatedAt
+}
+
+model RouteCheckpoint {
+  id        String    @id @default(cuid())
+  convoyId  String
+  name      String
+  lat       Float
+  lng       Float
+  sequence  Int
+  kind      String    @default("checkpoint")
+  etaAt     DateTime?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  convoy    Convoy    @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+
+  @@unique([convoyId, sequence])
+  @@index([convoyId])
+}
+
+model Alert {
+  id             String        @id @default(cuid())
+  convoyId       String
+  type           AlertType
+  severity       AlertSeverity
+  title          String
+  message        String
+  vehicleId      String?
+  lat            Float?
+  lng            Float?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  acknowledgedAt DateTime?
+  convoy         Convoy        @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+
+  @@index([convoyId, createdAt])
+  @@index([severity, acknowledgedAt])
+  @@index([type, createdAt])
+}
+
+model ConvoyMessage {
+  id        String      @id @default(cuid())
+  convoyId  String
+  userId    String
+  vehicleId String?
+  kind      MessageKind @default(text)
+  body      String
+  signal    String?
+  lat       Float?
+  lng       Float?
+  createdAt DateTime    @default(now())
+  convoy    Convoy      @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([convoyId, createdAt])
+}
+
+model ShareLink {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  convoyId    String
+  createdById String
+  label       String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  viewCount   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  convoy      Convoy    @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+
+  @@index([convoyId])
+}
+
+model SosIncident {
+  id             String    @id @default(cuid())
+  convoyId       String?
+  userId         String
+  vehicleId      String?
+  kind           SosKind
+  status         SosStatus @default(open)
+  lat            Float
+  lng            Float
+  notes          String?
+  peakG          Float?
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  timeline       Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  convoy         Convoy?   @relation(fields: [convoyId], references: [id], onDelete: SetNull)
+  user           User      @relation("SosRaisedBy", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([convoyId, createdAt])
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  convoyId    String
+  paidById    String
+  title       String
+  category    ExpenseCategory @default(other)
+  amountMinor Int
+  currency    String          @default("INR")
+  splitMode   String          @default("equal")
+  createdAt   DateTime        @default(now())
+  convoy      Convoy          @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+  paidBy      User            @relation(fields: [paidById], references: [id], onDelete: Cascade)
+  shares      ExpenseShare[]
+
+  @@index([convoyId, createdAt])
+}
+
+model ExpenseShare {
+  id          String  @id @default(cuid())
+  expenseId   String
+  userId      String
+  amountMinor Int
+  expense     Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, userId])
+  @@index([userId])
+}
+
+model VoiceChannel {
+  id          String           @id @default(cuid())
+  convoyId    String
+  name        String
+  channelType VoiceChannelType @default(main)
+  isLocked    Boolean          @default(false)
+  livekitRoom String?
+  createdAt   DateTime         @default(now())
+  convoy      Convoy           @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+
+  @@index([convoyId, channelType])
+}
+
+model JourneyRecording {
+  id          String         @id @default(cuid())
+  convoyId    String         @unique
+  status      JourneyStatus  @default(recording)
+  startedAt   DateTime       @default(now())
+  completedAt DateTime?
+  summary     Json?
+  convoy      Convoy         @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+  events      JourneyEvent[]
+  media       MediaAsset[]
+
+  @@index([status, startedAt])
+}
+
+model JourneyEvent {
+  id         String           @id @default(cuid())
+  journeyId  String
+  type       String
+  title      String
+  lat        Float?
+  lng        Float?
+  metadata   Json
+  capturedAt DateTime
+  createdAt  DateTime         @default(now())
+  journey    JourneyRecording @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  @@index([journeyId, capturedAt])
+  @@index([type, capturedAt])
+}
+
+model MediaAsset {
+  id         String            @id @default(cuid())
+  journeyId  String?
+  userId     String?
+  type       MediaType
+  url        String
+  thumbnail  String?
+  metadata   Json?
+  capturedAt DateTime?
+  createdAt  DateTime          @default(now())
+  journey    JourneyRecording? @relation(fields: [journeyId], references: [id], onDelete: SetNull)
+
+  @@index([journeyId, createdAt])
+  @@index([type, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Billing (per-vehicle seats)
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  userId             String
+  plan               PlanCode
+  provider           PaymentProvider
+  providerCustomerId String?
+  providerSubId      String?            @unique
+  status             SubscriptionStatus @default(checkout_pending)
+  quantity           Int                @default(1)
+  unitAmountMinor    Int
+  amountMinor        Int
+  taxMode            TaxMode            @default(inclusive)
+  currency           String             @default("INR")
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments           Payment[]
+  seats              SubscriptionSeat[]
+
+  @@index([userId, status])
+  @@index([status])
+}
+
+/// One seat covers exactly one vehicle. A buyer can assign seats to other members' vehicles.
+model SubscriptionSeat {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  vehicleId      String       @unique
+  assignedById   String
+  assignedAt     DateTime     @default(now())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+}
+
+model Payment {
+  id             String          @id @default(cuid())
+  subscriptionId String
+  provider       PaymentProvider
+  providerRef    String?
+  amountMinor    Int
+  currency       String
+  status         String
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  subscription   Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, createdAt])
+  @@index([provider, providerRef])
+}
+
+model WebhookEvent {
+  id         String          @id @default(cuid())
+  provider   PaymentProvider
+  eventId    String
+  type       String
+  receivedAt DateTime        @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model AdImpression {
+  id           String   @id @default(cuid())
+  userId       String?
+  convoyId     String?
+  placement    String
+  network      String
+  revenueMinor Int      @default(0)
+  currency     String   @default("INR")
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([placement, createdAt])
+  @@index([convoyId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Social
+// ---------------------------------------------------------------------------
+
+model Club {
+  id          String       @id @default(cuid())
+  ownerId     String
+  name        String
+  slug        String       @unique
+  description String?
+  city        String?
+  countryCode String?      @db.VarChar(2)
+  coverUrl    String?
+  isPublic    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  owner       User         @relation("ClubOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     ClubMember[]
+  convoys     ClubConvoy[]
+  posts       Post[]
+  meetups     Meetup[]
+
+  @@index([ownerId])
+  @@index([isPublic, createdAt])
+}
+
+model ClubMember {
+  id       String     @id @default(cuid())
+  clubId   String
+  userId   String
+  role     ConvoyRole @default(driver)
+  joinedAt DateTime   @default(now())
+  club     Club       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, userId])
+  @@index([userId])
+}
+
+model ClubConvoy {
+  id       String @id @default(cuid())
+  clubId   String
+  convoyId String
+  club     Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  convoy   Convoy @relation(fields: [convoyId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, convoyId])
+  @@index([convoyId])
+}
+
+model Post {
+  id           String         @id @default(cuid())
+  authorId     String
+  clubId       String?
+  convoyId     String?
+  body         String
+  mediaUrls    String[]
+  visibility   PostVisibility @default(public)
+  isHidden     Boolean        @default(false)
+  likeCount    Int            @default(0)
+  commentCount Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  author       User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  club         Club?          @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  comments     PostComment[]
+  likes        PostLike[]
+
+  @@index([createdAt])
+  @@index([authorId, createdAt])
+  @@index([clubId, createdAt])
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  body      String
+  isHidden  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
+
+model RoadReport {
+  id            String           @id @default(cuid())
+  reporterId    String
+  convoyId      String?
+  type          RoadReportType
+  lat           Float
+  lng           Float
+  geohash5      String           @db.VarChar(5)
+  note          String?
+  confirmations Int              @default(1)
+  dismissals    Int              @default(0)
+  isRemoved     Boolean          @default(false)
+  expiresAt     DateTime
+  createdAt     DateTime         @default(now())
+  reporter      User             @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  votes         RoadReportVote[]
+
+  @@index([geohash5, expiresAt])
+  @@index([createdAt])
+}
+
+model RoadReportVote {
+  id         String     @id @default(cuid())
+  reportId   String
+  userId     String
+  stillThere Boolean
+  createdAt  DateTime   @default(now())
+  report     RoadReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, userId])
+}
+
+model Meetup {
+  id          String       @id @default(cuid())
+  hostId      String
+  clubId      String?
+  title       String
+  description String
+  startsAt    DateTime
+  endsAt      DateTime?
+  venueName   String
+  address     String?
+  city        String?
+  countryCode String?      @db.VarChar(2)
+  lat         Float
+  lng         Float
+  capacity    Int          @default(50)
+  priceMinor  Int          @default(0)
+  currency    String       @default("INR")
+  coverUrl    String?
+  status      MeetupStatus @default(pending_review)
+  reviewNote  String?
+  checkInCode String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  host        User         @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  club        Club?        @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  rsvps       MeetupRsvp[]
+
+  @@index([status, startsAt])
+  @@index([city, startsAt])
+}
+
+model MeetupRsvp {
+  id          String     @id @default(cuid())
+  meetupId    String
+  userId      String
+  vehicleId   String?
+  status      RsvpStatus @default(going)
+  checkedInAt DateTime?
+  createdAt   DateTime   @default(now())
+  meetup      Meetup     @relation(fields: [meetupId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetupId, userId])
+  @@index([meetupId, status])
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  reporterId  String
+  assigneeId  String?
+  subjectType String
+  subjectId   String
+  reason      String
+  status      ReportStatus @default(open)
+  metadata    Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  reporter    User         @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  assignee    User?        @relation("ReportAssignee", fields: [assigneeId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([subjectType, subjectId])
+}
+
+// ---------------------------------------------------------------------------
+// Platform
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  action      String
+  subjectType String
+  subjectId   String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([subjectType, subjectId])
+}
+
+model Announcement {
+  id          String        @id @default(cuid())
+  title       String
+  body        String
+  countryCode String?       @db.VarChar(2)
+  severity    AlertSeverity @default(info)
+  startsAt    DateTime      @default(now())
+  endsAt      DateTime?
+  createdById String
+  createdAt   DateTime      @default(now())
+
+  @@index([startsAt, endsAt])
+}
+
+model FeatureFlag {
+  key         String   @id
+  enabled     Boolean  @default(false)
+  rolloutPct  Int      @default(100)
+  description String?
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+}
+
+model AssistantMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  convoyId  String?
+  role      String
+  content   String
+  model     String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}

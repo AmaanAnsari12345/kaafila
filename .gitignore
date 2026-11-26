@@ -1,0 +1,40 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# builds
+.next
+dist
+coverage
+out
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# databases and caches
+.turbo
+.vercel
+.supabase
+redis-data
+postgres-data
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+dist-test
+.claude/settings.local.json
+
+# build caches and generated upload archives (regenerate with pnpm hostinger:prepare)
+*.tsbuildinfo
+deploy/hostinger/*.zip

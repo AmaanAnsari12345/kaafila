@@ -43,8 +43,8 @@ export function CardTitle({ eyebrow, title, right }: { eyebrow?: string; title: 
   return (
     <div className="mb-3 flex items-start justify-between gap-3">
       <div className="min-w-0">
-        {eyebrow ? <p className="text-xs uppercase tracking-wide text-muted-foreground">{eyebrow}</p> : null}
-        <h2 className="mt-0.5 text-base font-semibold">{title}</h2>
+        {eyebrow ? <p className="hud-label">{eyebrow}</p> : null}
+        <h2 className="font-display mt-1 text-base font-semibold">{title}</h2>
       </div>
       {right}
     </div>

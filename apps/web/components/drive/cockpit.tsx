@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Mic, MicOff, Navigation, Pause, Play, Plus, Power, Radio, Satellite, ShieldCheck, Smartphone, Square, UserPlus } from "lucide-react";
+import { Mic, MicOff, Pause, Play, Plus, Power, Satellite, ShieldCheck, Smartphone, Square, UserPlus } from "lucide-react";
 import {
   buildRouteIndex,
   decodePolyline,
@@ -34,6 +34,7 @@ import { CreateConvoyDialog, JoinConvoyDialog } from "./convoy-dialogs";
 import { IntelPanel } from "./intel-panel";
 import { QuickSignals } from "./quick-signals";
 import { ChatPanel, KittyPanel, RosterPanel, SharePanel } from "./side-panels";
+import { CockpitHud } from "./hud";
 import { CrashCountdown, SosButton, SosDialog } from "./sos";
 
 type Tab = "intel" | "members" | "chat" | "kitty" | "invite";
@@ -306,10 +307,12 @@ export function Cockpit() {
               onMapLongPress={canCommand ? (p) => (setRegroupDraft(p), setDialog("regroup")) : undefined}
               className="h-[56vh] min-h-[420px]"
             />
-            <div className="pointer-events-none absolute left-3 top-3 grid gap-2">
-              <Stat icon={Navigation} label="My speed" value={fix ? formatKph(fix.speedKph) : me_ ? formatKph(me_.speedKph) : "—"} />
-              {report ? <Stat icon={ShieldCheck} label="Health" value={`${report.healthScore}`} /> : null}
-            </div>
+            <CockpitHud
+              className="absolute left-3 top-3 z-10"
+              kph={fix ? fix.speedKph : me_ ? me_.speedKph : null}
+              headingDeg={fix ? fix.headingDeg : me_ ? me_.headingDeg : null}
+              intel={report ?? null}
+            />
             <div className="absolute bottom-4 left-4 z-10">
               <SosButton onClick={() => setDialog("sos")} />
             </div>
@@ -401,18 +404,6 @@ export function Cockpit() {
       <CrashCountdown open={Boolean(crash)} peakG={crash?.peakG ?? 0} onCancel={() => setCrash(null)} onConfirm={() => (void raiseSos("crash_detected", crash?.peakG), setCrash(null))} />
       <RegroupDialog open={dialog === "regroup"} point={regroupDraft} onClose={() => setDialog(null)} onSet={(name) => regroupDraft && setRegroup({ name, lat: regroupDraft.lat, lng: regroupDraft.lng })} />
       {toastView}
-    </div>
-  );
-}
-
-function Stat({ icon: Icon, label, value }: { icon: typeof Radio; label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/60 px-3 py-2 backdrop-blur">
-      <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-        {label}
-      </p>
-      <p className="text-lg font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

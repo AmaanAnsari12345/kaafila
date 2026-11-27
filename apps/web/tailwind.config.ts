@@ -38,11 +38,12 @@ const config: Config = {
         }
       },
       fontFamily: {
-        sans: ["var(--font-geist-sans)", "Inter", "system-ui", "sans-serif"],
-        mono: ["var(--font-geist-mono)", "SFMono-Regular", "Menlo", "monospace"]
+        sans: ["var(--font-sans)", "Inter", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-sans)", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "SFMono-Regular", "Menlo", "monospace"]
       },
       boxShadow: {
-        glow: "0 0 40px rgba(42, 209, 178, 0.16)",
+        glow: "0 0 40px rgba(34, 211, 238, 0.22)",
         danger: "0 0 36px rgba(244, 63, 94, 0.16)"
       }
     }

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle, Empty, Field, Input, Notice, Tabs, Textarea } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/use-toast";
+import { RoutesPanel } from "./routes-panel";
 
 interface Author {
   id: string;
@@ -42,7 +43,7 @@ interface Club {
   _count: { members: number };
 }
 
-type Tab = "feed" | "following" | "clubs";
+type Tab = "feed" | "following" | "clubs" | "routes";
 
 export function CommunityView() {
   const { status } = useAuth();
@@ -58,10 +59,11 @@ export function CommunityView() {
         items={[
           { id: "feed", label: "Everyone" },
           { id: "following", label: "Following" },
-          { id: "clubs", label: "Clubs" }
+          { id: "clubs", label: "Clubs" },
+          { id: "routes", label: "Scenic routes" }
         ]}
       />
-      {tab === "clubs" ? <Clubs notify={notify} /> : <Feed scope={tab === "following" ? "following" : "all"} notify={notify} />}
+      {tab === "clubs" ? <Clubs notify={notify} /> : tab === "routes" ? <RoutesPanel notify={notify} /> : <Feed scope={tab === "following" ? "following" : "all"} notify={notify} />}
       {view}
     </div>
   );

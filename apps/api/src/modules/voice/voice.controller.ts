@@ -17,6 +17,17 @@ export class VoiceController {
     return this.voice.getChannels(user, convoyId);
   }
 
+  @Post("clubs/:clubId/livekit-token")
+  clubToken(@CurrentUser() user: AuthenticatedUser, @Param("clubId") clubId: string) {
+    return this.voice.createClubToken(user, clubId);
+  }
+
+  /** Whether calls are configured, for the web app to show or hide call buttons. */
+  @Get("status")
+  status() {
+    return this.voice.status();
+  }
+
   @Post("convoys/:convoyId/livekit-token")
   token(@CurrentUser() user: AuthenticatedUser, @Param("convoyId") convoyId: string, @Query("channelId") channelId?: string) {
     return this.voice.createLiveKitToken(user, convoyId, channelId);

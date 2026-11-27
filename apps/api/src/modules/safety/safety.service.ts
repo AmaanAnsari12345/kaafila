@@ -7,6 +7,7 @@ import { AuditService } from "../../shared/audit/audit.service";
 import type { AuthenticatedUser } from "../auth/auth.service";
 import { ConvoyAccessService } from "../core/convoy-access.service";
 import { RealtimeBus } from "../core/realtime-bus.service";
+import { NotificationsService } from "../notifications/notifications.module";
 
 export interface RaiseSosInput {
   convoyId?: string;
@@ -26,7 +27,8 @@ export class SafetyService {
     private readonly redis: RedisService,
     private readonly access: ConvoyAccessService,
     private readonly bus: RealtimeBus,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly notifications: NotificationsService
   ) {}
 
   async raise(user: AuthenticatedUser, input: RaiseSosInput): Promise<SosEvent> {
@@ -99,6 +101,16 @@ export class SafetyService {
       }
     };
     if (input.convoyId) this.bus.toConvoy(input.convoyId, recent ? SOCKET_EVENTS.sosUpdate : SOCKET_EVENTS.sosNew, event);
+    if (input.convoyId && !recent) {
+      const members = await this.prisma.convoyMember.findMany({ where: { convoyId: input.convoyId, status: "active", userId: { not: user.id } }, select: { userId: true } });
+      this.notifications.notifyUsers(members.map((m) => m.userId), {
+        title: `SOS — ${user.displayName}`,
+        body: `${user.displayName} needs help (${input.kind.replace("_", " ")}). Tap to see where.`,
+        url: `/drive?c=${input.convoyId}`,
+        tag: `sos-${incident.id}`,
+        requireInteraction: true
+      });
+    }
     this.bus.toStaff(recent ? SOCKET_EVENTS.sosUpdate : SOCKET_EVENTS.sosNew, event);
     await this.redis.client.del(`intel:${input.convoyId}`).catch(() => undefined);
     return event;

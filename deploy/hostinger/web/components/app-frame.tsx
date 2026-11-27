@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { CarFront, Compass, CreditCard, LifeBuoy, LogIn, LogOut, Menu, Plug, Shield, Sparkles, Users, CalendarDays, X } from "lucide-react";
+import { CarFront, Compass, CreditCard, LifeBuoy, LogIn, LogOut, Menu, Plug, Shield, Sparkles, Users, CalendarDays, Video, X } from "lucide-react";
+import { VoiceLauncher } from "@/components/voice/voice-launcher";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ const NAV = [
   { href: "/meetups", label: "Meetups", icon: CalendarDays },
   { href: "/roadside", label: "Roadside", icon: LifeBuoy },
   { href: "/copilot", label: "Co-pilot", icon: Sparkles },
+  { href: "/calls", label: "Calls", icon: Video },
   { href: "/connect", label: "Connect", icon: Plug },
   { href: "/billing", label: "Billing", icon: CreditCard }
 ] as const;
@@ -31,14 +33,14 @@ export function AppFrame({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen pb-20 lg:pb-0">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#080b11]/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-cyan-300/10 bg-[#03050a]/75 backdrop-blur-xl after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-gradient-to-r after:from-transparent after:via-cyan-400/50 after:to-transparent">
         <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-3 sm:px-5">
           <button type="button" className="rounded-lg p-2 hover:bg-white/10 xl:hidden" onClick={() => setOpen(true)} aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </button>
           <Link href="/" className="flex items-center gap-2">
             <Image src="/brand/kaafila-mark.svg" alt="" width={28} height={28} priority />
-            <span className="font-semibold tracking-wide">KAAFILA</span>
+            <span className="font-display text-sm font-semibold tracking-[0.3em] neon-text">KAAFILA</span>
           </Link>
           <nav className="ml-4 hidden items-center gap-0.5 xl:flex" aria-label="Main">
             {NAV.map((item) => (
@@ -47,7 +49,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
                 href={item.href}
                 className={cn(
                   "flex items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-white/5 hover:text-foreground",
-                  pathname.startsWith(item.href) && "bg-white/[0.07] text-foreground"
+                  pathname.startsWith(item.href) && "bg-cyan-300/10 text-cyan-50 shadow-[inset_0_-2px_0_rgb(34,211,238)]"
                 )}
               >
                 <item.icon className="h-4 w-4" />
@@ -107,7 +109,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
 
       <main className="mx-auto max-w-[1600px] px-3 py-4 sm:px-5">{children}</main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-[#080b11]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Quick">
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-cyan-300/10 bg-[#03050a]/90 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden" aria-label="Quick">
         {NAV.filter((n) => MOBILE.includes(n.href)).map((item) => (
           <Link key={item.href} href={item.href} className={cn("flex flex-col items-center gap-1 py-2 text-[11px]", pathname.startsWith(item.href) ? "text-primary" : "text-muted-foreground")}>
             <item.icon className="h-5 w-5" />
@@ -115,6 +117,7 @@ export function AppFrame({ children }: { children: ReactNode }) {
           </Link>
         ))}
       </nav>
+      <VoiceLauncher />
     </div>
   );
 }
@@ -123,8 +126,8 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        {eyebrow ? <p className="text-xs uppercase tracking-wide text-muted-foreground">{eyebrow}</p> : null}
-        <h1 className="mt-1 text-2xl font-semibold">{title}</h1>
+        {eyebrow ? <p className="hud-label">{eyebrow}</p> : null}
+        <h1 className="font-display mt-1 text-2xl font-semibold sm:text-3xl">{title}</h1>
         {description ? <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}

@@ -236,6 +236,21 @@ export class BillingService {
     return { ok: true, cancelAtPeriodEnd: true };
   }
 
+  /** Account deletion: stop all future charges immediately. Payment records are kept for tax law. */
+  async cancelAllForUser(userId: string) {
+    const subs = await this.prisma.subscription.findMany({ where: { userId, status: { in: ["active", "past_due", "checkout_pending"] } } });
+    for (const sub of subs) {
+      try {
+        if (sub.providerSubId && sub.provider === "razorpay" && this.razorpay) await this.razorpay.subscriptions.cancel(sub.providerSubId, false);
+        if (sub.providerSubId && sub.provider === "stripe" && this.stripe) await this.stripe.subscriptions.cancel(sub.providerSubId);
+      } catch (err) {
+        this.logger.error(`Provider cancel failed for ${sub.id}: ${(err as Error).message}`);
+      }
+      await this.applyStatus(sub.id, "cancelled");
+    }
+    return subs.length;
+  }
+
   /* ------------------------------- webhooks -------------------------------- */
 
   async handleRazorpayWebhook(rawBody: Buffer | undefined, signature: string | undefined, eventIdHeader: string | undefined) {

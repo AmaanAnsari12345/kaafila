@@ -10,3 +10,5 @@ export * from "./roadside.js";
 export * from "./obd.js";
 export * from "./garage.js";
 export * from "./devices.js";
+export * from "./features.js";
+export * from "./enthusiast.js";

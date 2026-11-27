@@ -8,6 +8,7 @@ import { PageHeader, SignInPrompt } from "@/components/app-frame";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle, Field, Input, Notice, Select, Textarea } from "@/components/ui/field";
 import { useToast } from "@/components/ui/use-toast";
+import { BackgroundAlertsCard, DeleteAccountCard } from "./account-controls";
 
 interface ProfileForm {
   displayName: string;
@@ -141,6 +142,8 @@ export function ProfileEditor() {
           <Download className="h-4 w-4" /> Download my data
         </Button>
       </div>
+      <BackgroundAlertsCard notify={notify} />
+      <DeleteAccountCard />
       {view}
     </div>
   );

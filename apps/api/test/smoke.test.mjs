@@ -13,6 +13,7 @@ import { createHmac } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { encodePolyline } from "@kaafila/shared";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -26,7 +27,10 @@ Object.assign(process.env, {
   OVERPASS_BASE_URL: "http://127.0.0.1:9/overpass",
   GEOCODER_BASE_URL: "http://127.0.0.1:9/nominatim",
   WEATHER_BASE_URL: "http://127.0.0.1:9/weather",
-  RAZORPAY_WEBHOOK_SECRET: "smoke_webhook_secret"
+  RAZORPAY_WEBHOOK_SECRET: "smoke_webhook_secret",
+  // Deterministic: no background retention timer, and the assistant answers in rules mode (no AI calls).
+  RETENTION_ENABLED: "false",
+  ANTHROPIC_API_KEY: ""
 });
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for the smoke test");
 
@@ -44,6 +48,8 @@ const AARAV = tok("aarav");
 const ZARA = tok("zara");
 const EVE = tok("eve");
 const ADMIN = "dev-token";
+const DEL = tok("deleteme");
+const MALLORY = tok("mallory");
 
 let app;
 let http;
@@ -303,6 +309,135 @@ test("payment webhooks verify signatures and are idempotent", async () => {
   assert.equal(first.status, 200, JSON.stringify(first.body));
   assert.equal(first.body.ignored, "unknown_subscription");
   assert.equal((await send(sig)).body.duplicate, true);
+});
+
+/** Reads a Server-Sent Events response body into [{ event, data }]. */
+const sse = (method, url, token, body) =>
+  api(method, url, token, body)
+    .buffer(true)
+    .parse((res, cb) => {
+      let raw = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => (raw += c));
+      res.on("end", () => cb(null, raw));
+    })
+    .then((r) => ({
+      status: r.status,
+      type: r.headers["content-type"],
+      events: String(r.body)
+        .split("\n\n")
+        .filter((b) => b.startsWith("event:"))
+        .map((b) => {
+          const [ev, data] = b.split("\n");
+          return { event: ev.slice(6).trim(), data: JSON.parse(data.slice(5)) };
+        })
+    }));
+
+test("platform: feature registry, staged flags, push key", async () => {
+  const features = await api("get", "/platform/features");
+  assert.equal(features.status, 200);
+  const trek = features.body.find((f) => f.key === "trek_mode");
+  assert.equal(trek.stage, "planned");
+  assert.ok(trek.target);
+  const flags = await api("get", "/platform/flags", ZARA);
+  assert.equal(flags.body.voice_mode, true);
+  assert.equal(flags.body.trek_mode, false, "planned features stay off");
+  const vapid = await api("get", "/notifications/vapid-public-key");
+  assert.equal(vapid.status, 200);
+  assert.equal(typeof vapid.body.enabled, "boolean");
+  const adminFlags = await api("get", "/admin/flags", ADMIN);
+  assert.equal(adminFlags.status, 200, JSON.stringify(adminFlags.body));
+  const list = Array.isArray(adminFlags.body) ? adminFlags.body : adminFlags.body.registry ?? adminFlags.body.items ?? [];
+  assert.ok(list.some((f) => f.key === "group_calls" && f.stage === "beta"), JSON.stringify(adminFlags.body).slice(0, 300));
+});
+
+test("enthusiast: fuel economy, build sheet, drive score", async () => {
+  const fill = (odometerKm, quantity, cost, day) =>
+    api("post", `/garage/vehicles/${S.a1}/fuel`, AARAV, { filledAt: new Date(Date.now() - day * 86_400_000).toISOString(), odometerKm, quantity, totalCostMinor: cost, isFullTank: true });
+  assert.equal((await fill(41_000, 40, 400_000, 10)).status, 201);
+  assert.equal((await fill(41_600, 40, 400_000, 2)).status, 201);
+  const foreign = await api("post", `/garage/vehicles/${S.a1}/fuel`, ZARA, { filledAt: new Date().toISOString(), odometerKm: 1, quantity: 1, totalCostMinor: 1 });
+  assert.equal(foreign.status, 403, "only the owner logs fuel");
+  const fuel = await api("get", `/garage/vehicles/${S.a1}/fuel`, AARAV);
+  assert.equal(fuel.status, 200, JSON.stringify(fuel.body));
+  assert.equal(fuel.body.economyUnit, "km/L");
+  assert.equal(fuel.body.economy.averageEconomy, 15, "600 km on 40 L, full to full");
+
+  const mod = await api("post", `/garage/vehicles/${S.a1}/mods`, AARAV, { category: "wheels", name: "18in alloys", brand: "Smoke Wheels" });
+  assert.equal(mod.status, 201, JSON.stringify(mod.body));
+  assert.equal((await api("post", `/garage/vehicles/${S.a1}/mods`, AARAV, { category: "warp_drive", name: "x" })).status, 400);
+  assert.equal((await api("get", `/garage/vehicles/${S.a1}/mods`, AARAV)).body.length, 1);
+
+  const score = await api("get", `/garage/vehicles/${S.a1}/drive-score?days=30`, AARAV);
+  assert.equal(score.status, 200, JSON.stringify(score.body));
+  assert.ok(score.body.samples >= 2, JSON.stringify(score.body));
+});
+
+test("scenic routes: share from a road-routed convoy, rate, list", async () => {
+  const straight = await api("post", "/social/routes", AARAV, { convoyId: S.convoy, title: "Expressway" });
+  assert.equal(straight.status, 400, "straight-line estimates cannot be shared");
+  const prisma = app.get(PrismaService);
+  await prisma.convoy.update({ where: { id: S.convoy }, data: { routePolyline: encodePolyline([0, 0.25, 0.5, 0.75, 1].map(along)) } });
+
+  assert.equal((await api("post", "/social/routes", MALLORY, { convoyId: S.convoy, title: "Not mine" })).status, 403);
+  const r = await api("post", "/social/routes", AARAV, { convoyId: S.convoy, title: "Ghat sunrise", region: "Western Ghats", tags: ["ghats", "sunrise"] });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal((await api("post", `/social/routes/${r.body.id}/rate`, ZARA, { rating: 5 })).status, 201);
+  const again = await api("post", `/social/routes/${r.body.id}/rate`, ZARA, { rating: 3 });
+  assert.equal(again.body.ratingCount, 1, "re-rating replaces the earlier rating");
+  assert.equal(again.body.averageRating, 3);
+  const list = await api("get", "/social/routes?tag=ghats", EVE);
+  assert.equal(list.status, 200, JSON.stringify(list.body));
+  assert.ok(list.body.some((x) => x.id === r.body.id && x.averageRating === 3 && x.myRating === null));
+});
+
+test("assistant: streaming help (public) and co-pilot (members only)", async () => {
+  const help = await sse("post", "/assistant/help/stream", undefined, { message: "How does the 500 per car plan work?", voice: true });
+  assert.equal(help.status, 200);
+  assert.match(help.type, /text\/event-stream/);
+  const text = help.events.filter((e) => e.event === "delta").map((e) => e.data.text).join("");
+  assert.ok(text.length > 20, text);
+  assert.equal(help.events.at(-1).event, "done");
+  assert.equal(help.events.at(-1).data.mode, "rules");
+
+  const denied = await api("post", "/assistant/stream", MALLORY, { message: "Who is behind?", convoyId: S.convoy });
+  assert.equal(denied.status, 403, "errors before streaming keep their status code");
+  const ask = await sse("post", "/assistant/stream", ZARA, { message: "Who needs fuel?", convoyId: S.convoy, voice: true });
+  assert.equal(ask.status, 200);
+  assert.ok(ask.events.some((e) => e.event === "delta"), JSON.stringify(ask.events));
+  assert.equal(ask.events.at(-1).event, "done");
+});
+
+test("retention job is admin-only and reports what it removed", async () => {
+  assert.equal((await api("post", "/admin/maintenance/retention", AARAV)).status, 403);
+  const r = await api("post", "/admin/maintenance/retention", ADMIN);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(typeof r.body.explorerPings, "number");
+  assert.equal(typeof r.body.durationMs, "number");
+});
+
+test("account deletion: confirm phrase, cleanup, token stops working", async () => {
+  const me = await api("get", "/users/me", DEL);
+  assert.equal(me.status, 200);
+  const car = await api("post", "/garage/vehicles", DEL, { type: "car", name: "Swift", fuelType: "petrol" });
+  assert.equal(car.status, 201, JSON.stringify(car.body));
+  const c = await api("post", "/convoys", DEL, { name: "Solo run", origin: O, destination: D, vehicleId: car.body.id });
+  assert.equal(c.status, 201, JSON.stringify(c.body));
+  assert.equal((await api("post", "/social/posts", DEL, { body: "bye" })).status, 201);
+
+  assert.equal((await api("delete", "/users/me", DEL, { confirm: "delete" })).status, 400);
+  const del = await api("delete", "/users/me", DEL, { confirm: "DELETE MY ACCOUNT" });
+  assert.equal(del.status, 200, JSON.stringify(del.body));
+  assert.equal(del.body.deleted, true);
+  assert.equal(del.body.convoysClosed, 1);
+  assert.equal((await api("get", "/users/me", DEL)).status, 401);
+
+  const prisma = app.get(PrismaService);
+  const row = await prisma.user.findUnique({ where: { id: me.body.id } });
+  assert.equal(row.displayName, "Deleted user");
+  assert.ok(row.deletedAt);
+  assert.equal(await prisma.vehicle.count({ where: { userId: me.body.id } }), 0);
+  assert.equal(await prisma.post.count({ where: { authorId: me.body.id } }), 0);
 });
 
 test("socket: handshake auth, membership, live fan-out", async () => {

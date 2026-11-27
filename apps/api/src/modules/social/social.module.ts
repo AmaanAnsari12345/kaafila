@@ -9,6 +9,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { SupabaseAuthGuard } from "../auth/supabase-auth.guard";
 import { GarageModule } from "../garage/garage.module";
 import { GarageService } from "../garage/garage.service";
+import { RoutesController, RoutesService } from "./routes";
 
 class CreatePostDto {
   @IsString() @Length(1, 2000) body!: string;
@@ -315,7 +316,7 @@ export class SocialController {
 
 @Module({
   imports: [GarageModule],
-  controllers: [SocialController],
-  providers: [SocialService]
+  controllers: [RoutesController, SocialController],
+  providers: [SocialService, RoutesService]
 })
 export class SocialModule {}

@@ -54,10 +54,18 @@ export class AuthService {
       }
     });
 
+    if (user.deletedAt) throw new UnauthorizedException("This account was deleted");
     if (user.isSuspended) throw new ForbiddenException(`Account suspended${user.suspendedReason ? `: ${user.suspendedReason}` : ""}`);
 
     // Role is owned by the database once the user exists, so admins can promote/demote in the console.
     return { id: user.id, email: user.email ?? undefined, phone: user.phone ?? undefined, displayName: user.displayName, role: user.role };
+  }
+
+  /** Removes the sign-in identity (Supabase) so a deleted account can't sign in again. */
+  async deleteIdentity(userId: string) {
+    if (!this.supabase || userId.startsWith("usr_dev")) return;
+    const { error } = await this.supabase.auth.admin.deleteUser(userId);
+    if (error) this.logger.error(`Supabase identity delete failed for ${userId}: ${error.message}`);
   }
 
   private async resolveIdentity(token: string): Promise<AuthenticatedUser> {

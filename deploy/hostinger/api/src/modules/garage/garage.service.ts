@@ -174,7 +174,18 @@ export class GarageService {
   async showcase(userId: string) {
     return this.prisma.vehicle.findMany({
       where: { userId, isShowcase: true },
-      select: { id: true, name: true, type: true, make: true, model: true, year: true, color: true, photoUrl: true, fuelType: true }
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        make: true,
+        model: true,
+        year: true,
+        color: true,
+        photoUrl: true,
+        fuelType: true,
+        mods: { select: { id: true, category: true, name: true, brand: true }, orderBy: { category: "asc" }, take: 30 }
+      }
     });
   }
 }

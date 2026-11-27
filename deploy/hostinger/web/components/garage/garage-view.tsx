@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle, Empty, Field, Input, Notice, Select, Tabs, Textarea } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/use-toast";
+import { BuildSheetPanel, DriveScorePanel, FuelPanel } from "./enthusiast-panels";
 
 interface VehicleDetail {
   vehicle: GarageVehicle;
@@ -27,7 +28,7 @@ interface VehicleDetail {
   lastTelemetry: { readings: Partial<Record<ObdMetric, number>>; dtcs: string[]; capturedAt: string; flags: { level: string; message: string }[] } | null;
 }
 
-type DetailTab = "reminders" | "documents" | "log" | "obd" | "checklist";
+type DetailTab = "reminders" | "documents" | "log" | "fuel" | "build" | "score" | "obd" | "checklist";
 
 export function GarageView() {
   const { status, refreshMe } = useAuth();
@@ -136,6 +137,9 @@ function VehiclePanel({ id, notify, onChanged }: { id: string; notify: (t: strin
           { id: "reminders", label: "Reminders", badge: d.reminders.filter((r) => r.status.state !== "ok").length || undefined },
           { id: "documents", label: "Documents", badge: d.documents.filter((x) => x.status.state === "expired" || x.status.state === "expiring").length || undefined },
           { id: "log", label: "Service log" },
+          { id: "fuel", label: "Fuel" },
+          { id: "build", label: "Build" },
+          { id: "score", label: "Drive score" },
           { id: "obd", label: "OBD-II" },
           { id: "checklist", label: "Pre-trip" }
         ]}
@@ -143,6 +147,9 @@ function VehiclePanel({ id, notify, onChanged }: { id: string; notify: (t: strin
       {tab === "reminders" ? <Reminders d={d} id={id} notify={notify} reload={detail.reload} /> : null}
       {tab === "documents" ? <Documents d={d} id={id} notify={notify} reload={detail.reload} /> : null}
       {tab === "log" ? <ServiceLog d={d} id={id} notify={notify} reload={detail.reload} /> : null}
+      {tab === "fuel" ? <FuelPanel vehicleId={id} odometerKm={v.odometerKm} notify={notify} /> : null}
+      {tab === "build" ? <BuildSheetPanel vehicleId={id} notify={notify} /> : null}
+      {tab === "score" ? <DriveScorePanel vehicleId={id} /> : null}
       {tab === "obd" ? <ObdPanel id={id} plan={d.plan} last={d.lastTelemetry} notify={notify} /> : null}
       {tab === "checklist" ? <Checklist vehicleId={id} /> : null}
     </div>

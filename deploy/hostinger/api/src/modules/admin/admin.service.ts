@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { SOCKET_EVENTS, type AdminOverview } from "@kaafila/shared";
+import { FEATURE_REGISTRY, SOCKET_EVENTS, type AdminOverview } from "@kaafila/shared";
 import { PrismaService } from "../../shared/prisma/prisma.service";
 import { RedisService } from "../../shared/redis/redis.service";
 import { AuditService } from "../../shared/audit/audit.service";
@@ -205,8 +205,28 @@ export class AdminService {
     return { ok: true };
   }
 
-  flags() {
-    return this.prisma.featureFlag.findMany({ orderBy: { key: "asc" } });
+  /** Registry features (with stage and defaults) merged with saved overrides, plus ad-hoc flags. */
+  async flags() {
+    const rows = await this.prisma.featureFlag.findMany({ orderBy: { key: "asc" } });
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+    const registry = FEATURE_REGISTRY.map((def) => {
+      const o = byKey.get(def.key);
+      return {
+        key: def.key,
+        name: def.name,
+        description: o?.description ?? def.description,
+        stage: def.stage,
+        target: def.target ?? null,
+        enabled: o?.enabled ?? def.defaultEnabled,
+        rolloutPct: o?.rolloutPct ?? def.defaultRolloutPct,
+        overridden: Boolean(o),
+        updatedAt: o?.updatedAt ?? null
+      };
+    });
+    const adhoc = rows
+      .filter((r) => !FEATURE_REGISTRY.some((d) => d.key === r.key))
+      .map((r) => ({ key: r.key, name: r.key, description: r.description, stage: "custom" as const, target: null, enabled: r.enabled, rolloutPct: r.rolloutPct, overridden: true, updatedAt: r.updatedAt }));
+    return [...registry, ...adhoc];
   }
 
   async upsertFlag(actor: AuthenticatedUser, key: string, data: { enabled: boolean; rolloutPct?: number; description?: string }) {

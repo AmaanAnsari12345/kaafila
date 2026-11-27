@@ -24,6 +24,7 @@ import { MapsService } from "../integrations/maps.service";
 import { PlacesService } from "../integrations/places.service";
 import { IntelService } from "../intel/intel.service";
 import { TrackingService } from "../tracking/tracking.service";
+import { KAAFILA_KNOWLEDGE, SAFETY_RULES } from "./knowledge";
 
 export interface AssistantAnswer {
   answer: string;
@@ -33,18 +34,53 @@ export interface AssistantAnswer {
   upgradeHint?: string;
 }
 
-const SYSTEM_PROMPT = `You are KAAFILA Co-pilot, the in-journey assistant for groups of cars driving together (a convoy).
+export type AssistantMode = "text" | "voice" | "help";
 
-Who you talk to: a driver or navigator, often while the car is moving. Answer in at most three short sentences unless they ask for detail, in plain spoken language that sounds natural when read aloud. Lead with the action.
+/** Streamed answer events (Server-Sent Events). */
+export interface AnswerSink {
+  send(event: "delta" | "tool" | "meta" | "done" | "error", data: unknown): void;
+}
 
-Ground every factual statement about the convoy, places, weather, numbers or vehicles in a tool result from this conversation. If a tool returns nothing useful or fails, say what you could not check instead of guessing. Never invent distances, phone numbers, prices or opening hours.
+export interface StreamInput {
+  message: string;
+  convoyId?: string;
+  position?: GeoPoint;
+  voice?: boolean;
+  /** help mode only: the visitor's recent turns (untrusted, capped) */
+  history?: { role: "user" | "assistant"; content: string }[];
+}
 
-Safety comes first:
-- For an accident, injury, fire or medical emergency, tell them to call the local emergency number (get it with get_emergency_info) and to raise a KAAFILA SOS, before anything else.
-- Never encourage a driver to type, read long text or look at the screen while moving; suggest pulling over or handing the phone to the navigator.
-- Do not advise speeding to catch up; the Elastic Band and regroup features exist so the convoy waits.
+const CO_PILOT_ROLE = `You are KAAFILA Co-pilot, the assistant inside KAAFILA, an app for groups of cars driving together (a convoy).
+
+Ground every factual statement about the convoy, places, weather or vehicles in a tool result from this conversation; for questions about the app, features, pricing and roadside help use the product knowledge below. If something isn't covered, say you don't know rather than guessing. Never invent distances, phone numbers, prices or opening hours.
+
+${SAFETY_RULES}
 
 Distances are metric. Currency is Indian rupees unless the user says otherwise.`;
+
+const HELP_ROLE = `You are the KAAFILA help assistant on the public website. You answer questions about what KAAFILA does, how to use it, pricing, devices, roadside safety and the roadmap, using only the product knowledge below. You cannot see anyone's convoy or account; for that, suggest signing in and using the Co-pilot. If a question isn't about KAAFILA, driving or road safety, politely steer back.
+
+${SAFETY_RULES}`;
+
+const STYLE: Record<AssistantMode, string> = {
+  text: "Answer in at most three short sentences unless they ask for detail. Lead with the action.",
+  voice:
+    "This is a spoken conversation: your words are read aloud the moment you write them. Reply in one to three short, natural sentences. No lists, markdown, symbols, emoji or URLs. Say numbers the way people speak them. Lead with the action; offer more detail only if they ask.",
+  help: "Answer in two to four short sentences, friendly and concrete. If they could do it in the app, say which page."
+};
+
+/** Byte-stable prefix (role + knowledge) is cached; the per-mode style comes after the breakpoint. */
+function systemBlocks(mode: AssistantMode): Anthropic.Beta.BetaTextBlockParam[] {
+  const role = mode === "help" ? HELP_ROLE : CO_PILOT_ROLE;
+  return [
+    { type: "text", text: `${role}\n\n${KAAFILA_KNOWLEDGE}`, cache_control: { type: "ephemeral" } },
+    { type: "text", text: STYLE[mode] }
+  ];
+}
+
+function sentences(text: string): string[] {
+  return text.match(/[^.!?]+[.!?]+\s*|[^.!?]+$/g) ?? [text];
+}
 
 @Injectable()
 export class AssistantService {
@@ -52,6 +88,9 @@ export class AssistantService {
   private readonly client?: Anthropic;
   private readonly model: string;
   private readonly effort: "low" | "medium" | "high" | "xhigh" | "max";
+  private readonly voiceEffort: "low" | "medium" | "high" | "xhigh" | "max";
+  private readonly hourlyLimit: number;
+  private readonly publicDailyLimit: number;
 
   constructor(
     config: ConfigService,
@@ -68,11 +107,14 @@ export class AssistantService {
     if (apiKey) this.client = new Anthropic({ apiKey, timeout: 60_000, maxRetries: 2 });
     this.model = config.get<string>("ASSISTANT_MODEL") ?? "claude-opus-5-5";
     this.effort = config.get("ASSISTANT_EFFORT") ?? "medium";
+    this.voiceEffort = config.get("ASSISTANT_VOICE_EFFORT") ?? "low";
+    this.hourlyLimit = Number(config.get("ASSISTANT_HOURLY_LIMIT") ?? 60);
+    this.publicDailyLimit = Number(config.get("ASSISTANT_PUBLIC_DAILY_LIMIT") ?? 2000);
   }
 
   async ask(user: AuthenticatedUser, message: string, convoyId?: string, position?: GeoPoint): Promise<AssistantAnswer> {
     if (convoyId) await this.access.requireMember(convoyId, user);
-    if (!(await this.redis.allow(`rl:assistant:${user.id}`, 20, 3600))) {
+    if (!(await this.redis.allow(`rl:assistant:${user.id}`, this.hourlyLimit, 3600))) {
       throw new HttpException("You've reached the co-pilot limit for this hour", HttpStatus.TOO_MANY_REQUESTS);
     }
 
@@ -130,7 +172,7 @@ export class AssistantService {
     const runner = this.client!.beta.messages.toolRunner({
       model: this.model,
       max_tokens: 16000,
-      system: SYSTEM_PROMPT,
+      system: systemBlocks("text"),
       messages: [...history, { role: "user", content: `${ctx.contextLine()}\n\n${message}` }],
       tools,
       output_config: { effort: this.effort },
@@ -150,6 +192,189 @@ export class AssistantService {
       .join("\n")
       .trim();
     return { answer: text || "I couldn't put together an answer. Try asking again in a moment.", mode: "ai", model: final.model, toolsUsed };
+  }
+
+  private async recentHistory(userId: string, convoyId?: string): Promise<Anthropic.Beta.BetaMessageParam[]> {
+    const recent = await this.prisma.assistantMessage.findMany({
+      where: { userId, convoyId: convoyId ?? null, createdAt: { gt: new Date(Date.now() - 6 * 3600_000) } },
+      orderBy: { createdAt: "desc" },
+      take: 10
+    });
+    const history: Anthropic.Beta.BetaMessageParam[] = recent.reverse().map((m) => ({ role: m.role === "assistant" ? ("assistant" as const) : ("user" as const), content: m.content }));
+    while (history.length && history[0]!.role !== "user") history.shift();
+    return history;
+  }
+
+  /* ------------------------------ streaming (voice) ------------------------------ */
+
+  /**
+   * Signed-in co-pilot, streamed. Text deltas go out as they are generated so the client can
+   * start speaking after the first sentence. Voice mode runs at low effort for latency.
+   */
+  async streamAsk(user: AuthenticatedUser, input: StreamInput, sink: AnswerSink, signal: AbortSignal) {
+    if (input.convoyId) await this.access.requireMember(input.convoyId, user);
+    if (!(await this.redis.allow(`rl:assistant:${user.id}`, this.hourlyLimit, 3600))) {
+      throw new HttpException("You've reached the co-pilot limit for this hour", HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const started = Date.now();
+    const plan = await this.entitlements.planForUser(user.id);
+    const ctx = new ToolContext(this, user, input.convoyId, input.position);
+    const mode: AssistantMode = input.voice ? "voice" : "text";
+    let answer = "";
+    let meta: Omit<AssistantAnswer, "answer"> = { mode: "rules", toolsUsed: [] };
+
+    if (!this.client || plan === "explorer") {
+      const r = await this.rules(ctx, input.message);
+      for (const part of sentences(r.answer)) sink.send("delta", { text: part });
+      answer = r.answer;
+      meta = { mode: "rules", toolsUsed: r.toolsUsed, upgradeHint: this.client ? "The full AI co-pilot is part of KAAFILA Drive (₹500 per car per month)." : undefined };
+    } else {
+      const toolsUsed: string[] = [];
+      const tools = ctx.tools((name) => {
+        toolsUsed.push(name);
+        sink.send("tool", { name });
+      });
+      const history = await this.recentHistory(user.id, input.convoyId);
+      let firstTokenMs: number | null = null;
+      let model: string | undefined;
+      try {
+        const runner = this.client.beta.messages.toolRunner(
+          {
+            model: this.model,
+            max_tokens: 16000,
+            system: systemBlocks(mode),
+            messages: [...history, { role: "user", content: `${ctx.contextLine()}\n\n${input.message}` }],
+            tools,
+            output_config: { effort: input.voice ? this.voiceEffort : this.effort },
+            betas: ["server-side-fallback-2026-07-01"],
+            fallbacks: "default",
+            max_iterations: 6,
+            thread: false,
+            stream: true
+          },
+          { signal }
+        );
+        outer: for await (const messageStream of runner) {
+          for await (const event of messageStream) {
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+              if (firstTokenMs === null) firstTokenMs = Date.now() - started;
+              answer += event.delta.text;
+              sink.send("delta", { text: event.delta.text });
+            }
+          }
+          const message = await messageStream.finalMessage();
+          model = message.model;
+          if (message.stop_reason === "refusal") {
+            const sorry = " I can't help with that one. For anything urgent, call the local emergency number or raise a KAAFILA SOS.";
+            answer += sorry;
+            sink.send("delta", { text: sorry });
+            break outer;
+          }
+        }
+      } catch (err) {
+        if (signal.aborted) return;
+        this.logger.error(`Claude stream failed, falling back to rules: ${(err as Error).message}`);
+        const r = await this.rules(ctx, input.message);
+        const prefix = answer ? " " : "";
+        for (const part of sentences(r.answer)) sink.send("delta", { text: prefix + part });
+        answer += prefix + r.answer;
+      }
+      meta = { mode: "ai", model, toolsUsed };
+      sink.send("meta", { firstTokenMs });
+    }
+
+    sink.send("done", { ...meta, totalMs: Date.now() - started });
+    await this.prisma.assistantMessage
+      .createMany({
+        data: [
+          { userId: user.id, convoyId: input.convoyId, role: "user", content: input.message },
+          { userId: user.id, convoyId: input.convoyId, role: "assistant", content: answer.trim(), model: meta.model ?? meta.mode }
+        ]
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Public help (signed-out visitors): app, pricing, devices and roadside questions only. No account
+   * or convoy data, no tools: a single cached, streamed call, limited per client and per day.
+   */
+  async streamHelp(clientKey: string, input: StreamInput, sink: AnswerSink, signal: AbortSignal) {
+    const [perClient, global] = await Promise.all([
+      this.redis.allow(`rl:help:${clientKey}`, 15, 3600),
+      this.redis.allow(`rl:help:day:${new Date().toISOString().slice(0, 10)}`, this.publicDailyLimit, 86_400)
+    ]);
+    if (!perClient || !global) throw new HttpException("The help assistant is busy. Try again later or sign in to use your co-pilot.", HttpStatus.TOO_MANY_REQUESTS);
+    const started = Date.now();
+
+    if (!this.client) {
+      const answer = this.helpRules(input.message);
+      for (const part of sentences(answer)) sink.send("delta", { text: part });
+      sink.send("done", { mode: "rules", toolsUsed: [], totalMs: Date.now() - started });
+      return;
+    }
+
+    const history: Anthropic.Beta.BetaMessageParam[] = (input.history ?? [])
+      .slice(-6)
+      .map((h) => ({ role: h.role === "assistant" ? ("assistant" as const) : ("user" as const), content: String(h.content).slice(0, 1000) }));
+    while (history.length && history[0]!.role !== "user") history.shift();
+    // Roles must alternate; drop a trailing user turn so the new question follows an assistant turn.
+    if (history.length && history[history.length - 1]!.role === "user") history.pop();
+
+    let firstTokenMs: number | null = null;
+    let model: string | undefined;
+    try {
+      const stream = this.client.beta.messages.stream(
+        {
+          model: this.model,
+          max_tokens: 4096,
+          system: systemBlocks("help"),
+          messages: [...history, { role: "user", content: input.message }],
+          output_config: { effort: input.voice ? this.voiceEffort : "low" },
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default"
+        },
+        { signal }
+      );
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          if (firstTokenMs === null) firstTokenMs = Date.now() - started;
+          sink.send("delta", { text: event.delta.text });
+        }
+      }
+      const final = await stream.finalMessage();
+      model = final.model;
+      if (final.stop_reason === "refusal") sink.send("delta", { text: " I can only help with KAAFILA and road safety questions." });
+    } catch (err) {
+      if (signal.aborted) return;
+      this.logger.error(`help stream failed: ${(err as Error).message}`);
+      for (const part of sentences(this.helpRules(input.message))) sink.send("delta", { text: part });
+    }
+    sink.send("meta", { firstTokenMs });
+    sink.send("done", { mode: model ? "ai" : "rules", model, toolsUsed: [], totalMs: Date.now() - started });
+  }
+
+  /** Keyword answers from the product registries when no AI key is configured. */
+  helpRules(message: string): string {
+    const m = message.toLowerCase();
+    const has = (...w: string[]) => w.some((x) => m.includes(x));
+    if (has("accident", "crash", "fire", "injur", "emergency", "ambulance")) {
+      return "Call the local emergency number first: 112 works in India and on most mobile networks. Then raise a KAAFILA SOS so your convoy gets your location. The Roadside page has step-by-step guides.";
+    }
+    const guide = ROADSIDE_GUIDES.find((g) => g.title.toLowerCase().split(/\W+/).some((w) => w.length > 4 && m.includes(w)));
+    if (guide) return `${guide.summary} First: ${guide.steps[0]} Full steps are on the Roadside page under ${guide.title}.`;
+    if (has("price", "cost", "plan", "pay", "₹", "rupee", "subscription", "free")) {
+      return "KAAFILA Drive is ₹500 per car per month, GST included. Explorer is free: any car can join a convoy, share location, use quick signals, SOS and the kitty. You buy seats per car on the Billing page.";
+    }
+    if (has("obd", "bluetooth", "adapter", "diagnos")) {
+      return "Plug an ELM327 Bluetooth LE adapter into the OBD-II port, turn the ignition on, then open Garage and choose Connect OBD in Chrome or Edge. iPhone browsers don't support Web Bluetooth.";
+    }
+    if (has("trek", "hike", "walk", "tourist", "tour")) {
+      return "KAAFILA Trek for walking groups and KAAFILA Tour for tourist groups are on the roadmap. They'll roll out gradually, starting in 2027.";
+    }
+    if (has("call", "video", "voice")) {
+      return "Convoys get voice channels with push-to-talk, and clubs get a lounge for group voice and video calls. Video is off for anyone driving.";
+    }
+    return "KAAFILA keeps a group of cars together: live formation, pacing advice for the leader, fuel-range planning for the whole group, fair regroup points, SOS, roadside help and a shared expense kitty. Try the demo on the Drive page, or ask me about pricing, devices or roadside help.";
   }
 
   /* ------------------------------ tool backends ------------------------------ */

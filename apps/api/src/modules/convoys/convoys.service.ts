@@ -10,6 +10,7 @@ import { ConvoyAccessService } from "../core/convoy-access.service";
 import { EntitlementsService } from "../core/entitlements.service";
 import { RealtimeBus } from "../core/realtime-bus.service";
 import { MapsService } from "../integrations/maps.service";
+import { NotificationsService } from "../notifications/notifications.module";
 import type {
   ChatMessageDto,
   ConvoyStatusDto,
@@ -32,7 +33,8 @@ export class ConvoysService {
     private readonly entitlements: EntitlementsService,
     private readonly bus: RealtimeBus,
     private readonly config: ConfigService,
-    private readonly redis: RedisService
+    private readonly redis: RedisService,
+    private readonly notifications: NotificationsService
   ) {}
 
   /** Tracking caches convoy metadata (leader, regroup, status) for the hot path. */
@@ -332,6 +334,10 @@ export class ConvoysService {
       createdAtIso: row.createdAt.toISOString()
     };
     this.bus.toConvoy(convoyId, SOCKET_EVENTS.signalNew, event);
+    if (def.severity === "critical") {
+      const members = await this.prisma.convoyMember.findMany({ where: { convoyId, status: "active", userId: { not: user.id } }, select: { userId: true } });
+      this.notifications.notifyUsers(members.map((m) => m.userId), { title: def.label, body: `${user.displayName} ${def.spoken}.`, url: `/drive?c=${convoyId}`, tag: `signal-${convoyId}-${def.code}` });
+    }
     return event;
   }
 

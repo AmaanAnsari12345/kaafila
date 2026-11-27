@@ -16,6 +16,8 @@ import { HealthModule } from "./modules/health/health.module";
 import { IntegrationsModule } from "./modules/integrations/integrations.module";
 import { IntelModule } from "./modules/intel/intel.module";
 import { JourneysModule } from "./modules/journeys/journeys.module";
+import { MaintenanceModule } from "./modules/maintenance/maintenance.module";
+import { NotificationsModule } from "./modules/notifications/notifications.module";
 import { MeetupsModule } from "./modules/meetups/meetups.module";
 import { PlatformModule } from "./modules/platform/platform.module";
 import { RealtimeModule } from "./modules/realtime/realtime.module";
@@ -40,6 +42,7 @@ import { HttpThrottlerGuard } from "./shared/throttle/http-throttler.guard";
     AuthModule,
     CoreModule,
     IntegrationsModule,
+    NotificationsModule,
     UsersModule,
     GarageModule,
     DevicesModule,
@@ -57,6 +60,7 @@ import { HttpThrottlerGuard } from "./shared/throttle/http-throttler.guard";
     BillingModule,
     AdminModule,
     PlatformModule,
+    MaintenanceModule,
     RealtimeModule,
     HealthModule
   ],

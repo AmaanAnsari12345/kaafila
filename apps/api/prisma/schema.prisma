@@ -232,49 +232,54 @@ enum RoadReportType {
 // ---------------------------------------------------------------------------
 
 model User {
-  id                    String           @id
-  email                 String?          @unique
-  phone                 String?          @unique
-  handle                String?          @unique
+  id                    String             @id
+  email                 String?            @unique
+  phone                 String?            @unique
+  handle                String?            @unique
   displayName           String
   avatarUrl             String?
   bio                   String?
   homeCity              String?
-  countryCode           String?          @db.VarChar(2)
-  role                  UserRole         @default(user)
-  isSuspended           Boolean          @default(false)
+  countryCode           String?            @db.VarChar(2)
+  role                  UserRole           @default(user)
+  isSuspended           Boolean            @default(false)
   suspendedReason       String?
   emergencyContactName  String?
   emergencyContactPhone String?
-  bloodGroup            String?          @db.VarChar(4)
+  bloodGroup            String?            @db.VarChar(4)
   medicalNotes          String?
   upiVpa                String?
   lastActiveAt          DateTime?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  /// set when the person deletes their account; personal data is scrubbed, billing records kept
+  deletedAt             DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
   vehicles              Vehicle[]
-  ownedConvoys          Convoy[]         @relation("ConvoyOwner")
-  ledConvoys            Convoy[]         @relation("ConvoyLeader")
+  ownedConvoys          Convoy[]           @relation("ConvoyOwner")
+  ledConvoys            Convoy[]           @relation("ConvoyLeader")
   memberships           ConvoyMember[]
   subscriptions         Subscription[]
-  reports               Report[]         @relation("ReportReporter")
-  assignedReports       Report[]         @relation("ReportAssignee")
-  clubsOwned            Club[]           @relation("ClubOwner")
+  reports               Report[]           @relation("ReportReporter")
+  assignedReports       Report[]           @relation("ReportAssignee")
+  clubsOwned            Club[]             @relation("ClubOwner")
   clubMemberships       ClubMember[]
   devices               Device[]
   posts                 Post[]
   comments              PostComment[]
   likes                 PostLike[]
-  following             Follow[]         @relation("Follower")
-  followers             Follow[]         @relation("Following")
+  following             Follow[]           @relation("Follower")
+  followers             Follow[]           @relation("Following")
   meetupsHosted         Meetup[]
   rsvps                 MeetupRsvp[]
-  sosIncidents          SosIncident[]    @relation("SosRaisedBy")
+  sosIncidents          SosIncident[]      @relation("SosRaisedBy")
   expensesPaid          Expense[]
   expenseShares         ExpenseShare[]
   messages              ConvoyMessage[]
   roadReports           RoadReport[]
   roadReportVotes       RoadReportVote[]
+  pushSubscriptions     PushSubscription[]
+  scenicRoutes          ScenicRoute[]
+  routeRatings          RouteRating[]
 
   @@index([role])
   @@index([createdAt])
@@ -314,9 +319,43 @@ model Vehicle {
   documents        VehicleDocument[]
   telemetrySamples VehicleTelemetry[]
   devices          Device[]
+  fuelLogs         FuelLog[]
+  mods             VehicleMod[]
 
   @@index([userId])
   @@index([type])
+}
+
+model FuelLog {
+  id             String   @id @default(cuid())
+  vehicleId      String
+  filledAt       DateTime
+  odometerKm     Int
+  /// litres, or kWh for EVs
+  quantity       Float
+  totalCostMinor Int
+  currency       String   @default("INR")
+  isFullTank     Boolean  @default(true)
+  station        String?
+  createdAt      DateTime @default(now())
+  vehicle        Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, odometerKm])
+}
+
+model VehicleMod {
+  id          String    @id @default(cuid())
+  vehicleId   String
+  category    String
+  name        String
+  brand       String?
+  installedAt DateTime?
+  costMinor   Int?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
 }
 
 model MaintenanceRecord {
@@ -1031,6 +1070,60 @@ model FeatureFlag {
   description String?
   updatedBy   String?
   updatedAt   DateTime @updatedAt
+}
+
+/// Web Push subscription (one per browser/device). Used for SOS and critical alerts in the background.
+model PushSubscription {
+  id            String    @id @default(cuid())
+  userId        String
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?
+  failureCount  Int       @default(0)
+  lastSuccessAt DateTime?
+  createdAt     DateTime  @default(now())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ScenicRoute {
+  id          String        @id @default(cuid())
+  authorId    String
+  title       String
+  description String?
+  polyline    String
+  distanceM   Int
+  startName   String?
+  endName     String?
+  startLat    Float
+  startLng    Float
+  endLat      Float
+  endLng      Float
+  region      String?
+  tags        String[]
+  ratingSum   Int           @default(0)
+  ratingCount Int           @default(0)
+  isHidden    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  author      User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  ratings     RouteRating[]
+
+  @@index([createdAt])
+  @@index([region])
+}
+
+model RouteRating {
+  id        String      @id @default(cuid())
+  routeId   String
+  userId    String
+  rating    Int
+  createdAt DateTime    @default(now())
+  route     ScenicRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, userId])
 }
 
 model AssistantMessage {

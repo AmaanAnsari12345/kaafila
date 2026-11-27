@@ -504,8 +504,21 @@ function Announcements({ notify, isAdmin }: P) {
   );
 }
 
+interface FlagRow {
+  key: string;
+  name: string;
+  description: string | null;
+  stage: "live" | "beta" | "planned" | "custom";
+  target: string | null;
+  enabled: boolean;
+  rolloutPct: number;
+  overridden: boolean;
+}
+
+const STAGE_TONE = { live: "default", beta: "amber", planned: "neutral", custom: "neutral" } as const;
+
 function Flags({ notify, isAdmin }: P) {
-  const rows = useLoad<{ key: string; enabled: boolean; rolloutPct: number; description: string | null; updatedAt: string }[]>(() => api.get("/admin/flags"), []);
+  const rows = useLoad<FlagRow[]>(() => api.get("/admin/flags"), []);
   const [key, setKey] = useState("");
   const save = async (k: string, enabled: boolean, rolloutPct: number, description?: string | null) => {
     try {
@@ -517,7 +530,8 @@ function Flags({ notify, isAdmin }: P) {
   };
   return (
     <Card>
-      <CardTitle eyebrow="Gradual rollout" title="Feature flags" right={<Shield className="h-4 w-4 text-muted-foreground" />} />
+      <CardTitle eyebrow="Staged rollout" title="Features & flags" right={<Shield className="h-4 w-4 text-muted-foreground" />} />
+      <p className="mb-3 text-sm text-muted-foreground">Roll features out to a percentage of users. The same user always lands in the same bucket, so raising the percentage only adds people.</p>
       {isAdmin ? (
         <div className="mb-3 flex gap-2">
           <Input value={key} onChange={(e) => setKey(e.target.value.replace(/[^a-z0-9_.-]/gi, "").toLowerCase())} placeholder="new_flag_key" maxLength={60} />
@@ -529,12 +543,21 @@ function Flags({ notify, isAdmin }: P) {
       {rows.data?.length === 0 ? <Empty>No flags yet.</Empty> : null}
       <div className="grid gap-2">
         {rows.data?.map((f) => (
-          <div key={f.key} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 p-3 text-sm">
-            <span className="font-mono">{f.key}</span>
+          <div key={f.key} className="grid gap-2 rounded-lg border border-white/10 p-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-center gap-2 font-medium">
+                {f.name}
+                <Badge variant={STAGE_TONE[f.stage]}>{f.stage}</Badge>
+                {f.target ? <span className="text-xs text-muted-foreground">target {f.target}</span> : null}
+                {!f.overridden ? <span className="text-xs text-muted-foreground">default</span> : null}
+              </p>
+              <p className="font-mono text-xs text-muted-foreground">{f.key}</p>
+              {f.description ? <p className="mt-1 text-xs text-muted-foreground">{f.description}</p> : null}
+            </div>
             <span className="flex items-center gap-3">
               <label className="flex items-center gap-2 text-xs">
                 rollout
-                <input type="number" min={0} max={100} defaultValue={f.rolloutPct} disabled={!isAdmin} className="h-8 w-16 rounded border border-white/10 bg-black/30 px-2" onBlur={(e) => save(f.key, f.enabled, Number(e.target.value), f.description)} />%
+                <input type="number" min={0} max={100} defaultValue={f.rolloutPct} disabled={!isAdmin} className="h-8 w-16 rounded border border-white/10 bg-black/30 px-2" onBlur={(e) => Number(e.target.value) !== f.rolloutPct && save(f.key, f.enabled, Number(e.target.value), f.description)} />%
               </label>
               <Button size="sm" variant={f.enabled ? "default" : "outline"} disabled={!isAdmin} onClick={() => save(f.key, !f.enabled, f.rolloutPct, f.description)}>
                 {f.enabled ? "On" : "Off"}

@@ -8,6 +8,7 @@ import type { AuthenticatedUser } from "../auth/auth.service";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { SupabaseAuthGuard } from "../auth/supabase-auth.guard";
 import { RealtimeBus } from "../core/realtime-bus.service";
+import { NotificationsService } from "../notifications/notifications.module";
 
 class CreateMeetupDto {
   @IsString() @Length(4, 100) title!: string;
@@ -39,7 +40,8 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 export class MeetupsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly bus: RealtimeBus
+    private readonly bus: RealtimeBus,
+    private readonly notifications: NotificationsService
   ) {}
 
   list(city?: string) {
@@ -141,6 +143,7 @@ export class MeetupsService {
       if (next) {
         await this.prisma.meetupRsvp.update({ where: { id: next.id }, data: { status: "going" } });
         this.bus.toUser(next.userId, "meetup:promoted", { meetupId: id });
+        this.notifications.notifyUsers([next.userId], { title: "You're in!", body: "A spot opened up at a meetup you waitlisted for.", url: `/meetups/${id}`, tag: `meetup-${id}` });
       }
     }
     return { ok: true };

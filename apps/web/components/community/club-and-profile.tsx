@@ -97,7 +97,7 @@ interface Profile {
   createdAt: string;
   followedByMe: boolean;
   stats: { followers: number; following: number; completedConvoys: number };
-  showcase: { id: string; name: string; type: string; make: string | null; model: string | null; year: number | null; color: string | null; photoUrl: string | null }[];
+  showcase: { id: string; name: string; type: string; make: string | null; model: string | null; year: number | null; color: string | null; photoUrl: string | null; mods?: { id: string; category: string; name: string; brand: string | null }[] }[];
   posts: { id: string; body: string; createdAt: string; likeCount: number }[];
 }
 
@@ -160,6 +160,19 @@ export function ProfileView({ handle }: { handle: string }) {
               <div className="p-3">
                 <p className="font-medium">{v.name}</p>
                 <p className="text-xs text-muted-foreground">{[v.make, v.model, v.year, v.color].filter(Boolean).join(" · ")}</p>
+                {v.mods?.length ? (
+                  <div className="mt-2">
+                    <p className="hud-label">Build · {v.mods.length} parts</p>
+                    <ul className="mt-1 grid gap-0.5 text-xs text-muted-foreground">
+                      {v.mods.slice(0, 6).map((m) => (
+                        <li key={m.id}>
+                          {m.name}
+                          {m.brand ? ` · ${m.brand}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}

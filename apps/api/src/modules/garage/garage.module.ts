@@ -6,6 +6,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import { SupabaseAuthGuard } from "../auth/supabase-auth.guard";
 import { CreateVehicleDto, DocumentDto, MaintenanceDto, ReminderDto, TelemetryDto, UpdateVehicleDto } from "./garage.dto";
 import { GarageService } from "./garage.service";
+import { EnthusiastController, EnthusiastService } from "./enthusiast.controller";
 
 @ApiTags("garage")
 @ApiBearerAuth()
@@ -82,8 +83,8 @@ export class GarageController {
 }
 
 @Module({
-  controllers: [GarageController],
-  providers: [GarageService],
+  controllers: [GarageController, EnthusiastController],
+  providers: [GarageService, EnthusiastService],
   exports: [GarageService]
 })
 export class GarageModule {}

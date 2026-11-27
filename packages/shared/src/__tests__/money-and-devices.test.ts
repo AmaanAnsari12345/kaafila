@@ -120,3 +120,15 @@ test("pairing codes are 6 digits", () => {
   assert.equal(generatePairingCode(() => 0.000001), "000001");
   assert.match(generatePairingCode(), /^\d{6}$/);
 });
+
+test("feature rollout buckets are stable and respect percentages", async () => {
+  const { rolloutBucket, isFeatureOn, FEATURE_REGISTRY } = await import("../features.js");
+  assert.equal(rolloutBucket("voice_mode", "user-1"), rolloutBucket("voice_mode", "user-1"));
+  assert.equal(isFeatureOn(true, 100, "x", "anyone"), true);
+  assert.equal(isFeatureOn(true, 0, "x", "anyone"), false);
+  assert.equal(isFeatureOn(false, 100, "x", "anyone"), false);
+  let on = 0;
+  for (let i = 0; i < 2000; i++) if (isFeatureOn(true, 25, "trek_mode", `u${i}`)) on++;
+  assert.ok(on > 400 && on < 600, `25% rollout gave ${on}/2000`);
+  assert.equal(new Set(FEATURE_REGISTRY.map((f) => f.key)).size, FEATURE_REGISTRY.length);
+});

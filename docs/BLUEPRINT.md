@@ -1,6 +1,6 @@
 # KAAFILA — System Blueprint v2
 
-Status date: 2026-11-26. This document is the single source of truth for what KAAFILA is, how it is built, and what is shipped versus planned. Every external constraint below links to its source. Anything marked **Roadmap** is not implemented yet.
+Status date: 2026-11-28. This document is the single source of truth for what KAAFILA is, how it is built, and what is shipped versus planned. Every external constraint below links to its source. Anything marked **Roadmap** is not implemented yet.
 
 ---
 
@@ -59,7 +59,8 @@ Legend: **Built** = implemented in this repository in this pass (API and/or web)
 | Convoy chat | Built |
 | Regroup point set by leader, broadcast to all | Built |
 | Socket.IO Redis adapter for multi-instance fan-out | Built (enabled when `REDIS_URL` set) |
-| Voice: push-to-talk signalling (Socket.IO) + LiveKit token per member identity | Built (token); media UI Roadmap |
+| Group calls (LiveKit): convoy channels — main, leaders, emergency — with hold-to-talk; drivers publish microphone only (no video while driving); viewers/family listen-only | Built (`/calls`) |
+| Club lounges: video, screen share, open mic for parked planning sessions | Built (`/calls`) |
 | Turn-by-turn voice navigation | Roadmap (native app) |
 
 ### 3.2 Signature intelligence (the "nobody does this" set)
@@ -85,7 +86,7 @@ Legend: **Built** = implemented in this repository in this pass (API and/or web)
 | Nearby services by category (fuel, EV charging, hospital, police, mechanic, tyre, toilets, food, lodging) via Overpass, cached per geohash | Built |
 | Community road reports (pothole, accident, police check, flooding, roadwork, debris, animal, fog, closure) with confirm/dismiss voting and auto-expiry | Built |
 | Route weather (Open-Meteo-compatible) | Built (needs commercial key in production, see §7) |
-| Web Push for SOS when app is backgrounded | Roadmap |
+| Web Push (VAPID) for SOS, critical quick signals and meetup waitlist promotion when the app is backgrounded; dead subscriptions pruned on 404/410 | Built (iPhone: installed PWA on iOS 16.4+) |
 | Integration with official emergency dispatch | Roadmap (needs partnerships) |
 
 ### 3.4 Car care (Garage)
@@ -97,7 +98,10 @@ Legend: **Built** = implemented in this repository in this pass (API and/or web)
 | Document vault with expiry alerts (insurance, registration, pollution certificate, permit, FASTag, licence) | Built (metadata; file storage via signed URLs Roadmap) |
 | Pre-trip checklist | Built |
 | OBD-II over Web Bluetooth (ELM327 BLE): RPM, speed, coolant, fuel level, voltage, load, DTCs | Built (Chrome/Edge only) |
-| Workshop marketplace / bookings | Roadmap |
+| Fuel log with full-to-full economy (km/L or km/kWh), best economy, cost per km | Built |
+| Build sheet: modifications by category, shown on the public garage showcase | Built |
+| Smooth-driving score from stored pings (harsh braking ≥ 0.35 g, harsh acceleration ≥ 0.30 g, debounced; needs ≥ 5 km) | Built (beta; GPS-speed derived, not an insurance score) |
+| Workshop marketplace / bookings | Roadmap (2027 Q4) |
 
 ### 3.5 Social, clubs, meetups
 | Feature | Status |
@@ -106,11 +110,14 @@ Legend: **Built** = implemented in this repository in this pass (API and/or web)
 | Clubs: create, join, public/private, club feed | Built |
 | Posts, comments, likes, report content | Built |
 | Meetups: create → admin review → published; capacity + waitlist; RSVP with vehicle; QR check-in code | Built |
+| Scenic routes library: share the planned route of a road-routed convoy (never live positions), tag, rate 1–5 (one rating per person), "Drive this route" creates a convoy pinned with via-points | Built (beta) |
 | Paid meetup ticketing | Roadmap |
 | Leaderboards / badges | Roadmap |
 
 ### 3.6 Assistant
 In-journey assistant on Claude (`claude-opus-5-5`) with tools that read live convoy state: formation, intel, nearby services, weather, emergency numbers, breakdown guides, vehicle care status. Server-side fallback chain enabled. When `ANTHROPIC_API_KEY` is not set, a deterministic rule-based responder answers from the same intel so the feature degrades instead of failing. **Built**.
+
+**Voice mode (Built, beta).** A full-screen, hands-free conversation (Alt+V or the floating orb on every page). Speech is recognised in the browser (Web Speech API where available, typing fallback otherwise); the answer streams over Server-Sent Events (`POST /assistant/stream`, `POST /assistant/help/stream`) and is spoken sentence by sentence with `speechSynthesis`, so audio starts after the first sentence instead of the whole answer. Latency levers: streaming, `output_config.effort` `low` for voice (`ASSISTANT_VOICE_EFFORT`), the product knowledge block and safety rules sent as a cached system prefix, sentence-level TTS, and interrupt-on-tap (the request is aborted server-side). The overlay shows measured time to first word, first audio and completion. Signed-out visitors get an app-help mode with no tools and no convoy data, limited to 15 questions per client per hour and `ASSISTANT_PUBLIC_DAILY_LIMIT` per day. Emergencies always lead with "call the local emergency number".
 
 Why Messages API + tool use rather than Managed Agents: the tools are sub-second reads against our own database, no sandbox is needed, and in-car latency matters. Managed Agents remains an option for long-running, multi-step planning jobs (e.g. "plan a 7-day Ladakh trip for 12 cars").
 
@@ -124,7 +131,8 @@ Why Messages API + tool use rather than Managed Agents: the tools are sub-second
 | Moderation queue: reports, road reports, posts (hide/restore) | Built |
 | Meetup review: approve/reject | Built |
 | Announcements (global or per country) | Built |
-| Feature flags with percentage rollout | Built |
+| Feature flags with percentage rollout, backed by a typed feature registry (live / beta / planned) and stable per-user buckets (FNV-1a) | Built |
+| Data retention job (hourly, Redis-locked, batched) with manual trigger and audit entry | Built |
 | Audit log for every admin mutation | Built |
 | Revenue: MRR, seats, subscriptions by status | Built |
 
@@ -198,7 +206,7 @@ flowchart LR
 | Screen Wake Lock | Yes | Yes | Yes (16.4+) | Yes (recent) | Keeps the cockpit on |
 | Web Bluetooth (OBD) | Yes | Yes | **No** ([caniuse](https://caniuse.com/web-bluetooth)) | **No** | iOS users need a native app or the Bluefy browser |
 | Device motion (crash heuristic) | Yes | Device-dependent | Yes, after `requestPermission()` | Yes | |
-| Web Push | Yes | Yes | Installed PWA only, 16.4+ ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)) | Yes | Roadmap |
+| Web Push | Yes | Yes | Installed PWA only, 16.4+ ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/)) | Yes | Built (pending native apps for background GPS) |
 | Android Auto / CarPlay | — | — | — | — | Native only — Roadmap |
 
 Pairing flow: owner opens **Connect → Pair a device** → server issues a 6-digit code (10-minute TTL, single use, rate-limited) bound to `{userId, vehicleId}` → second device enters code or scans QR → server records a `Device` row and returns its role (co-pilot display / passenger) → the device joins the convoy room as that vehicle's navigator.
@@ -237,7 +245,7 @@ Platform: `AuditLog`, `Announcement`, `FeatureFlag`, `AdImpression`, `AssistantM
 - Every REST route except health, public share-link reads and payment webhooks requires a Supabase JWT. The dev bypass token works only when `NODE_ENV !== "production"` **and** `ALLOW_DEV_TOKEN=true`.
 - Socket handshake verifies the JWT; `convoy:join` and every emit check membership; location pings are accepted only for a vehicle the user owns or is assigned to in that convoy.
 - Suspended users are rejected at the guard.
-- Location is personal data: exact tracks are stored only for convoy members and shown to family only via an explicit, expiring link. Personal data export is **Built** (`GET /users/me/export`). Plan-based retention (Explorer 7 days, Drive 365 days) and self-service account deletion are **Roadmap** and must ship before public launch. Align processing with India's DPDP Act 2023 and GDPR for EU users.
+- Location is personal data: exact tracks are stored only for convoy members and shown to family only via an explicit, expiring link. Personal data export is **Built** (`GET /users/me/export`). Plan-based retention is **Built**: location pings are kept 7 days for cars without an active seat, 365 days on Drive and 730 days on Fleet, and expired share links, pairings, webhook events, road reports and assistant messages are purged (`RETENTION_ENABLED`, `RETENTION_INTERVAL_MINUTES`). Self-service account deletion is **Built** (`DELETE /users/me` with the typed confirmation `DELETE MY ACCOUNT`): subscriptions are cancelled, live convoys and clubs are handed to a successor or closed, personal content and vehicles are deleted, the user row is anonymised (payment records are kept for tax law), and the identity is removed from Supabase. Align processing with India's DPDP Act 2023 and GDPR for EU users.
 - Medical card fields (blood group, notes) are shared only inside an active SOS.
 - Rate limits: global throttler + per-route limits on invite join, pairing codes, SOS, road reports and assistant calls.
 - Admin mutations are written to `AuditLog`.
@@ -262,15 +270,47 @@ Scale levers: horizontal gateway replicas behind sticky sessions + Redis adapter
 
 ## 12. Verification (this pass)
 
-- `packages/shared`: 31 unit tests pass (geo, intelligence, settlement, pricing, OBD parsing, garage, roadside).
-- Database: both migrations applied to a real PostgreSQL; `prisma migrate diff` reports no drift.
-- API: typecheck, build, and a 15-flow end-to-end smoke test (`apps/api/test/smoke.test.mjs`) over HTTP and Socket.IO against that database.
-- Web: typecheck and production build of all 19 routes; the Drive demo, landing and Roadside pages were checked in a browser with live OpenFreeMap tiles.
-- Not verified yet: real Redis (mocked locally; CI uses Redis 7), Docker images, live Supabase/Razorpay/Stripe/LiveKit/Claude calls, physical OBD adapters, background behaviour on phones, load. See `docs/DEPLOY_CHECKLIST_STATUS.md`.
+- `packages/shared`: 36 unit tests pass (geo, intelligence, settlement, pricing, OBD parsing, garage, roadside, feature rollout, fuel economy, drive score).
+- Database: all three migrations applied to a real PostgreSQL; `prisma migrate diff` reports no drift.
+- API: typecheck, build, and a 21-flow end-to-end smoke test (`apps/api/test/smoke.test.mjs`) over HTTP, SSE and Socket.IO against that database. New flows: feature registry and staged flags, fuel economy / build sheet / drive score, scenic routes (share, rate, list, access control), streaming help and co-pilot answers, the retention job, and account deletion. The smoke test caught a real bug in the retention SQL (`make_interval` with a bigint parameter), fixed before release.
+- Web: typecheck, lint and production build of all 20 routes; landing page, cockpit HUD on the dark map and the voice overlay were checked in a browser.
+- Not verified yet: real Redis (mocked locally; CI uses Redis 7), Docker images, live Supabase/Razorpay/Stripe/LiveKit/Claude/Web Push delivery, voice recognition on physical phones, physical OBD adapters, background behaviour on phones, load. See `docs/DEPLOY_CHECKLIST_STATUS.md`.
 
-## 13. Roadmap
+## 13. Roadmap and staged rollout
 
-1. **Now (this pass)**: everything marked Built above, web and API.
-2. **Before public launch**: location retention job + `LocationPing` partitioning, self-service account deletion, Web Push for SOS, load test of the socket tier, self-hosted geo services.
-3. **Next**: Expo native apps (background GPS, push, CarPlay/Android Auto), LiveKit media UI, media uploads to object storage.
-3. **Later**: workshop marketplace, paid meetup ticketing, AI trip-story videos, dispatch partnerships, fleet invoicing portal.
+Every user-facing capability is registered in `packages/shared/src/features.ts` with a stage (live, beta, planned). Admins change rollout percentages in the console; users are bucketed by a stable hash so a feature never flickers for one person. The public roadmap on the landing page and `GET /platform/features` read the same registry, so marketing never claims more than the code ships.
+
+1. **Shipped (this pass)**: everything marked Built above — including voice mode, group calls, Web Push, retention, account deletion, fuel log, build sheet, drive score and scenic routes.
+2. **Before public launch**: `LocationPing` monthly partitioning, load test of the socket tier, self-hosted geo services, live-provider verification (Supabase, Razorpay, Stripe, LiveKit, Web Push).
+3. **2027 Q2**: Expo native apps (background GPS, push, CarPlay/Android Auto); KAAFILA Trek beta (§14).
+4. **2027 Q3**: KAAFILA Tour beta (§14).
+5. **2027 Q4 and later**: workshop marketplace, paid meetup ticketing, AI trip-story videos, dispatch partnerships, fleet invoicing portal.
+
+## 14. Beyond cars: KAAFILA Trek and KAAFILA Tour (planned)
+
+The convoy engine solves a general problem: a group moving along a route, at different speeds, that must stay together, pace to its slowest member, regroup fairly and get help fast. Two extensions reuse it. Both are **planned**, flagged off (`trek_mode`, `tour_mode`), and will ship as betas to a small percentage first.
+
+**What carries over unchanged**: membership and roles, live formation along a route (chainage, gaps, stretch), Elastic Band, Fair Regroup (minimax ETA), Dead-Zone Forecast (even more valuable on trails), quick signals, SOS with safety card, family follow links, kitty settlement, group calls, voice mode, offline guides.
+
+**KAAFILA Trek (walking and trekking groups)**
+| Need | Design |
+|---|---|
+| On-foot pacing | Elastic Band with metre-scale thresholds and walking speeds; "sweeper" becomes the trek leader at the back |
+| Terrain | Altitude gain/loss along the route from a DEM; pace estimates adjusted for climb |
+| Daylight | Sunset time at the current position; a "last light" alert when remaining distance at current pace overruns daylight |
+| Water and rest | Water points and shelters from OpenStreetMap; rest prompts tuned for walking, not driving |
+| Signal | Dead-zone forecast plus store-and-forward SOS that sends when signal returns |
+| Health | Optional per-person altitude-sickness check-ins on high-altitude routes (information only, not medical advice) |
+| Pricing | Per person, not per car; to be set from beta data |
+
+**KAAFILA Tour (guided tourist groups)**
+| Need | Design |
+|---|---|
+| Meeting points | Guide drops a meeting point with a time; everyone gets walking ETA and a countdown |
+| Headcount | One-tap "I'm here" at each stop; the guide sees who's missing and where they are |
+| Itinerary | Day plan with stops, times and notes, pushed to every member |
+| Language | Guide announcements translated into each member's language (Claude), spoken in voice mode |
+| Lost member | "I'm lost" signal routes the member back to the group and alerts the guide |
+| Operators | Tour-company accounts with many guides and groups (Fleet-style seats) |
+
+**Rollout**: internal dogfood → 5 % beta in one region → 25 % → general availability, gated by crash-free sessions, SOS delivery success and support tickets per 100 groups.

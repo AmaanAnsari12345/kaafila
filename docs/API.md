@@ -11,17 +11,28 @@ Public routes (no auth) are marked 🌐.
 ## Platform & health
 - 🌐 `GET /health` — liveness. 🌐 `GET /health/ready` — database and Redis reachability (503 when degraded).
 - 🌐 `GET /platform/plans` — plan cards. 🌐 `GET /platform/announcements?country=IN`.
-- `GET /platform/flags` — feature flags evaluated for the caller (stable percentage rollout).
+- `GET /platform/flags` — every registered feature evaluated for the caller (registry defaults + admin overrides, stable percentage rollout).
+- 🌐 `GET /platform/features` — public roadmap from the feature registry: key, name, description, stage (`live`, `beta`, `planned`), target quarter.
+
+## Notifications (Web Push)
+- 🌐 `GET /notifications/vapid-public-key` — `{ enabled, publicKey }`.
+- `POST /notifications/push-subscriptions` `{ endpoint, keys: { p256dh, auth } }`, `DELETE /notifications/push-subscriptions` `{ endpoint }`.
+- `POST /notifications/test` — sends a test notification to the caller's devices.
+- Sent automatically for: SOS raised (other active convoy members), critical quick signals, meetup waitlist promotion. Subscriptions are removed on 404/410 or after 5 consecutive failures.
 
 ## Users
 - `GET /users/me` — profile, vehicles and effective plan. `PATCH /users/me` — profile, handle, safety card, UPI ID.
 - `GET /users/me/export` — personal data export.
+- `DELETE /users/me` `{ confirm: "DELETE MY ACCOUNT" }` — cancels subscriptions, hands over or closes owned convoys and clubs, deletes personal content and vehicles, anonymises the user row (payments kept), removes the Supabase identity. The token stops working immediately.
 
 ## Garage
 - `GET|POST /garage/vehicles`, `GET|PATCH|DELETE /garage/vehicles/:id`
 - `POST|DELETE /garage/vehicles/:id/maintenance[/:recordId]` — passing `reminderId` rolls that reminder forward.
 - `POST|DELETE /garage/vehicles/:id/reminders[/:reminderId]`, `POST|DELETE /garage/vehicles/:id/documents[/:documentId]`
 - `POST /garage/vehicles/:id/telemetry` — OBD readings + DTCs; returns interpreted flags (history kept on Drive). `GET` for history.
+- `GET|POST /garage/vehicles/:id/fuel`, `DELETE /garage/vehicles/:id/fuel/:entryId` — fill-ups; `GET` returns entries plus full-to-full economy (`averageEconomy`, `bestEconomy`, `costPerKmMinor`) in km/L or km/kWh.
+- `GET|POST /garage/vehicles/:id/mods`, `DELETE /garage/vehicles/:id/mods/:modId` — build sheet (up to 100 parts; shown on the public showcase).
+- `GET /garage/vehicles/:id/drive-score?days=30` — smooth-driving score from the car's stored pings.
 
 ## Devices
 - `GET /devices`, `POST /devices`, `DELETE /devices/:id`, `POST /devices/:id/heartbeat`, `GET /devices/vehicles/:vehicleId`
@@ -58,13 +69,18 @@ Public routes (no auth) are marked 🌐.
 - `POST /social/users/:id/follow`, `GET /social/profiles/:handle`
 - `GET|POST /social/clubs`, `GET /social/clubs/mine`, `GET /social/clubs/:slug`, `POST /social/clubs/:id/join`, `DELETE /social/clubs/:id/membership`
 - `POST /social/reports`
+- `GET /social/routes?sort=top|new&tag=&region=`, `GET|DELETE /social/routes/:id`, `POST /social/routes` `{ convoyId, title, description?, region?, tags? }` (members of a road-routed convoy), `POST /social/routes/:id/rate` `{ rating: 1-5 }` (one rating per person, re-rating replaces).
 - `GET /meetups`, `GET /meetups/mine`, `GET|POST /meetups[/:id]`, `POST /meetups/:id/cancel`, `POST|DELETE /meetups/:id/rsvp`, `POST /meetups/:id/check-in`
 
 ## Assistant
-- `POST /assistant/ask` `{ message, convoyId?, lat?, lng? }` — Claude with convoy-scoped tools (Drive) or rule-based answers. `GET /assistant/history`.
+- `POST /assistant/ask` `{ message, convoyId?, lat?, lng?, voice? }` — Claude with convoy-scoped tools (Drive) or rule-based answers. `GET /assistant/history`.
+- `POST /assistant/stream` (same body) — Server-Sent Events: `delta` `{ text }`, `tool` `{ name }`, `meta` `{ firstTokenMs }`, `done` `{ mode, model?, toolsUsed, totalMs }`, `error`. Errors raised before the first event (auth, membership, rate limit) return a normal JSON status. Closing the connection aborts the model call. 30/min per user plus `ASSISTANT_HOURLY_LIMIT`.
+- 🌐 `POST /assistant/help/stream` `{ message, voice?, history? }` — app-help mode for signed-out visitors: no tools, no convoy data, 15 per client per hour and `ASSISTANT_PUBLIC_DAILY_LIMIT` per day overall.
 
 ## Voice & journeys
-- `GET /voice/convoys/:id/channels`, `POST /voice/convoys/:id/livekit-token?channelId=`
+- `GET /voice/status` — whether LiveKit is configured.
+- `GET /voice/convoys/:id/channels`, `POST /voice/convoys/:id/livekit-token?channelId=` — drivers may publish microphone only (no camera or screen while driving); viewers and family are listen-only.
+- `POST /voice/clubs/:clubId/livekit-token` — club lounge for members: microphone, camera and screen share.
 - `POST /journeys/convoys/:id/start` (Drive), `GET /journeys/convoys/:id`, `POST /journeys/events`, `POST /journeys/:id/complete`, `GET /journeys/:id/replay`, `GET /journeys/:id/report`
 
 ## Billing (₹500 per car per month)
@@ -80,4 +96,5 @@ Public routes (no auth) are marked 🌐.
 - `GET /admin/moderation`, `POST /admin/reports/:id/resolve`, `PATCH /admin/posts/:id/visibility`, `POST /admin/road-reports/:id/remove`
 - `GET /admin/meetups/pending`, `POST /admin/meetups/:id/review`
 - `GET|POST /admin/announcements`, `DELETE /admin/announcements/:id` (admin)
-- `GET /admin/flags`, `PUT /admin/flags/:key` (admin), `GET /admin/audit` (admin)
+- `GET /admin/flags` — registry features (stage, target, enabled, rollout %, overridden) plus ad-hoc flags. `PUT /admin/flags/:key` (admin), `GET /admin/audit` (admin)
+- `POST /admin/maintenance/retention` (admin) — run the data-retention job now; returns counts removed per table.
